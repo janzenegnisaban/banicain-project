@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <defs>
+    <linearGradient id="lockGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ffcc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00ccff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(100, 50)">
+    <!-- Fingerprint Lock Icon -->
+    <path d="M150,0 C67.157,0 0,67.157 0,150 C0,232.843 67.157,300 150,300 C232.843,300 300,232.843 300,150 C300,67.157 232.843,0 150,0 Z M150,50 C205.228,50 250,94.772 250,150 C250,205.228 205.228,250 150,250 C94.772,250 50,205.228 50,150 C50,94.772 94.772,50 150,50 Z" fill="none" stroke="url(#lockGradient)" stroke-width="5" stroke-dasharray="10,5" />
+    
+    <!-- Lock Body -->
+    <path d="M100,120 L200,120 L200,220 L100,220 Z" fill="none" stroke="url(#lockGradient)" stroke-width="8" rx="20" ry="20" />
+    
+    <!-- Lock Shackle -->
+    <path d="M90,120 C90,80 210,80 210,120" fill="none" stroke="url(#lockGradient)" stroke-width="8" stroke-linecap="round" />
+    
+    <!-- Keyhole -->
+    <circle cx="150" cy="170" r="20" fill="none" stroke="url(#lockGradient)" stroke-width="8" />
+    <path d="M150,190 L150,210" stroke="url(#lockGradient)" stroke-width="8" stroke-linecap="round" />
+    
+    <!-- Fingerprint Lines -->
+    <path d="M110,140 C130,130 170,130 190,140" fill="none" stroke="url(#lockGradient)" stroke-width="3" stroke-linecap="round" />
+    <path d="M100,160 C130,145 170,145 200,160" fill="none" stroke="url(#lockGradient)" stroke-width="3" stroke-linecap="round" />
+    <path d="M100,180 C130,165 170,165 200,180" fill="none" stroke="url(#lockGradient)" stroke-width="3" stroke-linecap="round" />
+    <path d="M110,200 C130,190 170,190 190,200" fill="none" stroke="url(#lockGradient)" stroke-width="3" stroke-linecap="round" />
+  </g>
+  
+  <!-- Text -->
+  <text x="250" y="400" font-family="Arial, sans-serif" font-size="60" font-weight="bold" text-anchor="middle" fill="url(#lockGradient)">B-SAFE</text>
+  <text x="250" y="440" font-family="Arial, sans-serif" font-size="20" text-anchor="middle" fill="url(#lockGradient)">BARANGAY SECURE AND FAST ENGAGEMENT</text>
+</svg>
