@@ -85,25 +85,31 @@
   function getStatusBadgeClasses(status: Report['status']) {
     switch (status) {
       case 'Solved':
-        return 'bg-emerald-100 text-emerald-700';
+        return 'bg-emerald-400/20 border border-emerald-300/40 text-emerald-100';
       case 'Under Investigation':
-        return 'bg-amber-100 text-amber-700';
+        return 'bg-amber-400/20 border border-amber-300/40 text-amber-100';
       default:
-        return 'bg-blue-100 text-blue-700';
+        return 'bg-blue-400/20 border border-blue-300/40 text-blue-100';
     }
   }
 
   function getPriorityBadgeClasses(priority: Report['priority']) {
     switch (priority) {
       case 'Critical':
-        return 'bg-red-100 text-red-700';
+        return 'bg-rose-500/20 border border-rose-300/40 text-rose-100';
       case 'High':
-        return 'bg-orange-100 text-orange-700';
+        return 'bg-orange-500/20 border border-orange-300/40 text-orange-100';
       case 'Medium':
-        return 'bg-yellow-100 text-yellow-700';
+        return 'bg-yellow-400/20 border border-yellow-200/40 text-yellow-50';
       default:
-        return 'bg-emerald-100 text-emerald-700';
+        return 'bg-emerald-500/20 border border-emerald-300/40 text-emerald-100';
     }
+  }
+
+  function getRecentUpdates(report: Report, limit = 3) {
+    if (!report?.updates) return [];
+    const history = Array.isArray(report.updates) ? [...report.updates] : [];
+    return history.slice(-limit).reverse();
   }
 
   function readFileAsDataUrl(file: File) {
@@ -492,72 +498,126 @@
   </PageTransition>
 </div>
 
-<div class="max-w-5xl mx-auto px-4 pb-16 -mt-8">
-  <div class="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-white/50">
-    <div class="flex items-center justify-between flex-wrap gap-4 mb-6">
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">My Reports</h2>
-        <p class="text-sm text-gray-500">Track the status of every report you’ve submitted.</p>
+<div class="max-w-5xl mx-auto px-4 pb-20 -mt-8">
+  <div class="relative rounded-[32px] bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-800 p-[1px] shadow-[0_20px_80px_rgba(15,23,42,0.45)]">
+    <div class="relative rounded-[30px] bg-slate-950/70 backdrop-blur-2xl p-8 md:p-10 text-white overflow-hidden">
+      <div class="pointer-events-none absolute inset-0">
+        <div class="absolute -top-24 -right-10 w-72 h-72 bg-primary-500/30 blur-[140px]"></div>
+        <div class="absolute bottom-0 left-0 w-80 h-80 bg-blue-500/20 blur-[180px] opacity-70"></div>
       </div>
-      {#if currentUser?.id}
-        <button
-          type="button"
-          class="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm font-medium"
-          on:click={() => currentUser?.id && fetchMyReports(currentUser.id)}
-        >
-          Refresh
-        </button>
-      {/if}
-    </div>
 
-    {#if !isAuthChecked}
-      <p class="text-gray-500">Checking your account...</p>
-    {:else if myReportsLoading}
-      <div class="flex items-center space-x-3 text-gray-600">
-        <div class="h-4 w-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <span>Loading your reports...</span>
-      </div>
-    {:else if myReportsError}
-      <div class="p-4 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm">{myReportsError}</div>
-    {:else if myReports.length === 0}
-      <p class="text-gray-600">You haven’t submitted any reports yet. Once you do, their progress will appear here.</p>
-    {:else}
-      <div class="space-y-4">
-        {#each myReports as report (report.id)}
-          <div class="p-5 rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div>
-                <p class="text-lg font-semibold text-gray-900">{report.title}</p>
-                <p class="text-sm text-gray-500">Filed on {report.date} at {report.time}</p>
-              </div>
-              <div class="flex items-center gap-3">
-                <span class={`px-3 py-1 rounded-full text-xs font-semibold ${getPriorityBadgeClasses(report.priority)}`}>
-                  {report.priority} priority
-                </span>
-                <span class={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadgeClasses(report.status)}`}>
-                  {report.status}
-                </span>
-              </div>
-            </div>
-            <p class="mt-3 text-sm text-gray-700">{report.description}</p>
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-              <div>
-                <p class="text-gray-500 text-xs uppercase tracking-wide">Location</p>
-                <p class="text-gray-900 mt-1">{report.location}</p>
-              </div>
-              <div>
-                <p class="text-gray-500 text-xs uppercase tracking-wide">Officer</p>
-                <p class="text-gray-900 mt-1">{report.officer}</p>
-              </div>
-              <div>
-                <p class="text-gray-500 text-xs uppercase tracking-wide">Latest Update</p>
-                <p class="text-gray-900 mt-1">{latestUpdateNote(report)}</p>
-              </div>
-            </div>
+      <div class="relative z-10 space-y-6">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resident History</p>
+            <h2 class="text-3xl font-semibold text-white mt-2">My Reports</h2>
+            <p class="text-sm text-slate-300">Track the progress of every incident you have filed with Brgy. Banicain.</p>
           </div>
-        {/each}
+          {#if currentUser?.id}
+            <button
+              type="button"
+              class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+              on:click={() => currentUser?.id && fetchMyReports(currentUser.id)}
+            >
+              Refresh
+            </button>
+          {/if}
+        </div>
+
+        {#if !isAuthChecked}
+          <p class="text-slate-300">Checking your account…</p>
+        {:else if myReportsLoading}
+          <div class="flex items-center space-x-3 text-slate-200">
+            <div class="h-4 w-4 border-2 border-primary-300 border-t-transparent rounded-full animate-spin"></div>
+            <span>Loading your reports…</span>
+          </div>
+        {:else if myReportsError}
+          <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-300/40 text-sm text-rose-100">{myReportsError}</div>
+        {:else if myReports.length === 0}
+          <div class="p-6 rounded-2xl border border-white/10 bg-white/5 text-slate-200">
+            You haven’t submitted any reports yet. Once you do, their journey—from submission to resolution—will appear here.
+          </div>
+        {:else}
+          <div class="space-y-6">
+            {#each myReports as report (report.id)}
+              <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/30">
+                <div class="absolute inset-0 opacity-40 pointer-events-none">
+                  <div class="absolute right-0 top-0 w-72 h-72 bg-primary-500/20 blur-[120px]"></div>
+                </div>
+                <div class="relative space-y-5">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Report #{report.id}</p>
+                      <p class="text-2xl font-semibold text-white mt-1">{report.title}</p>
+                      <p class="text-sm text-slate-300">Filed on {report.date} at {report.time}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-xs font-semibold">
+                      <span class={`px-3 py-1 rounded-full ${getPriorityBadgeClasses(report.priority)}`}>
+                        {report.priority} priority
+                      </span>
+                      <span class={`px-3 py-1 rounded-full ${getStatusBadgeClasses(report.status)}`}>
+                        {report.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p class="text-sm text-slate-100 leading-relaxed">{report.description}</p>
+
+                  <div class="grid gap-6 lg:grid-cols-[1fr,250px]">
+                    <div class="space-y-4">
+                      <div class="grid gap-4 sm:grid-cols-3 text-sm text-slate-200">
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Location</p>
+                          <p class="text-white mt-1">{report.location}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Officer</p>
+                          <p class="text-white mt-1">{report.officer || 'Unassigned'}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Update</p>
+                          <p class="text-white mt-1">{latestUpdateNote(report)}</p>
+                        </div>
+                      </div>
+
+                      <div class="flex flex-wrap gap-4 text-xs text-slate-400">
+                        <div class="flex items-center gap-2">
+                          <span class="inline-flex h-2 w-2 rounded-full bg-emerald-300"></span>
+                          <span>Priority channel monitored</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span class="inline-flex h-2 w-2 rounded-full bg-sky-300"></span>
+                          <span>Supabase synced</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="rounded-2xl bg-black/30 border border-white/10 p-4">
+                      <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Recent Updates</p>
+                      {#if getRecentUpdates(report).length === 0}
+                        <p class="text-sm text-slate-300 mt-3">No timeline entries yet.</p>
+                      {:else}
+                        <div class="mt-4 space-y-4">
+                          {#each getRecentUpdates(report) as update}
+                            <div class="flex items-start gap-3 text-sm">
+                              <div class="mt-1 h-2.5 w-2.5 rounded-full bg-primary-300"></div>
+                              <div>
+                                <p class="text-white">{update.note}</p>
+                                <p class="text-xs text-slate-400">{update.date} · {update.time}</p>
+                              </div>
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
-    {/if}
+    </div>
   </div>
 </div>
 

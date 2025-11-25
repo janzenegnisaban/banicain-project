@@ -47,7 +47,7 @@ export const GET: RequestHandler = async () => {
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const body = await request.json();
-    const { username, email, full_name, role } = body;
+    const { username, email, full_name, role, password } = body;
 
     if (!username || !email) {
       return json({ error: 'Username and email are required' }, { status: 400 });
@@ -64,9 +64,32 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // Insert new user (Note: Password management is handled by Supabase Auth, not this table)
+    let authUserId: string | null = null;
+
+    // If password is provided, create auth user (admin creating account)
+    if (password && password.length >= 8) {
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: email.toLowerCase().trim(),
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: full_name || username,
+          role: role || 'Resident'
+        }
+      });
+
+      if (authError) {
+        console.error('Error creating auth user:', authError);
+        return json({ error: `Failed to create auth account: ${authError.message}` }, { status: 500 });
+      }
+
+      authUserId = authData?.user?.id ?? null;
+    }
+
+    // Insert user profile (use auth user ID if created, otherwise generate new UUID)
     const insertData = {
-      email,
+      id: authUserId || undefined, // Use auth user ID if available
+      email: email.toLowerCase().trim(),
       full_name: full_name || username,
       role: role || 'Resident',
       is_active: true
@@ -79,7 +102,11 @@ export const POST: RequestHandler = async ({ request }) => {
       .single();
 
     if (error) {
-      console.error('Error creating user:', error);
+      console.error('Error creating user profile:', error);
+      // If auth user was created but profile failed, try to clean up
+      if (authUserId) {
+        await supabase.auth.admin.deleteUser(authUserId);
+      }
       return json({ error: error.message }, { status: 500 });
     }
 

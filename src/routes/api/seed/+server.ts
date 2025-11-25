@@ -9,11 +9,17 @@ export const GET: RequestHandler = async () => {
 	try {
 		const result = await seedMockDataToDatabase();
 		
+		const { success: inserted, failed } = result;
+
 		return new Response(
 			JSON.stringify({
 				success: true,
-				message: `Successfully seeded ${result.success} reports. ${result.failed} failed.`,
-				...result
+				message: `Seeded ${inserted} reports (${failed} failed).`,
+				reportsInserted: inserted,
+				reportsFailed: failed,
+				officersCreated: result.officersCreated,
+				officerProfilesSynced: result.officerProfilesSynced,
+				reporterUserId: result.reporterUserId
 			}),
 			{
 				status: 200,

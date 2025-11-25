@@ -59,7 +59,7 @@ let currentUser: { role?: string; isAuthenticated?: boolean } | null = null;
     {
       number: "1",
       title: "Sign Up",
-      description: "Create your account using Gmail or password. Quick and secure verification process."
+      description: "Create your secure account with your email address in under a minute."
     },
     {
       number: "2",

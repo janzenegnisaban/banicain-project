@@ -1,110 +1,91 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { fade, fly, scale } from 'svelte/transition';
-  import { goto } from '$app/navigation';
-import PageTransition from '$lib/components/PageTransition.svelte';
-import { generateId } from '$lib/utils/id';
-  
-  let role: 'resident' | 'officer' = 'officer';
-  let username = '';
-  let password = '';
-  let errorMessage = '';
-  let isLoading = false;
-  let visible = false;
-type StoredUser = {
-	id: string;
-	username: string;
-	password: string;
-	role: 'resident' | 'officer';
-};
+	import { onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import { goto } from '$app/navigation';
+	import PageTransition from '$lib/components/PageTransition.svelte';
+	import { supabase } from '$lib/supabaseClient';
 
-let storedUsers: StoredUser[] = [];
-  
-  // Sample official accounts
-  const officialAccounts = [
-    { username: 'admin', password: 'admin123', role: 'Administrator' },
-    { username: 'officer1', password: 'officer123', role: 'Police Officer' },
-    { username: 'chief', password: 'chief123', role: 'Police Chief' },
-    { username: 'analyst', password: 'analyst123', role: 'Crime Analyst' }
-  ];
-  
-  function handleLogin() {
-    isLoading = true;
-    errorMessage = '';
-    
-    // Simulate API call delay
-    setTimeout(() => {
-      if (role === 'officer') {
-        const account = officialAccounts.find(
-          (acc) => acc.username === username && acc.password === password
-        );
-        if (account) {
-          localStorage.setItem('user', JSON.stringify({
-            id: `official-${account.username}`,
-            username: account.username,
-            role: account.role,
-            isAuthenticated: true
-          }));
-          goto('/dashboard');
-          return;
-        }
-      } else {
-        const resident = storedUsers.find(
-          (u) => u.role === 'resident' && u.username === username && u.password === password
-        );
-        if (resident) {
-          const residentId = resident.id ?? generateId('resident');
-          if (!resident.id) {
-            storedUsers = storedUsers.map(user =>
-              user.username === resident.username ? { ...user, id: residentId } : user
-            );
-            localStorage.setItem('users', JSON.stringify(storedUsers));
-          }
-          localStorage.setItem('user', JSON.stringify({
-            id: residentId,
-            username: resident.username,
-            role: 'Resident',
-            isAuthenticated: true
-          }));
-          goto('/residents');
-          return;
-        }
-      }
-      errorMessage = 'Invalid username or password';
-      isLoading = false;
-    }, 1000);
-  }
-  
-  onMount(() => {
-    // Trigger animations on mount
-    setTimeout(() => {
-      visible = true;
-    }, 100);
-    // Load users
-    try {
-      const raw = localStorage.getItem('users');
-      const parsed: StoredUser[] = raw ? JSON.parse(raw) : [];
-      let needsSave = false;
-      storedUsers = parsed.map(user => {
-        if (user?.id) return user;
-        needsSave = true;
-        return { ...user, id: generateId(user.role === 'officer' ? 'officer' : 'resident') };
-      });
-      if (needsSave) {
-        localStorage.setItem('users', JSON.stringify(storedUsers));
-      }
-    } catch {
-      storedUsers = [];
-    }
-    // Read role from query
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const qRole = params.get('role');
-      if (qRole === 'resident' || qRole === 'officer') {
-        role = qRole;
-      }
-    } catch {}
-  });
+	type PortalRole = 'resident' | 'officer';
+
+	const officerRoles = ['Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
+
+	let role: PortalRole = 'officer';
+	let email = '';
+	let password = '';
+	let errorMessage = '';
+	let isLoading = false;
+	let visible = false;
+
+	onMount(() => {
+		setTimeout(() => {
+			visible = true;
+		}, 100);
+
+		try {
+			const params = new URLSearchParams(window.location.search);
+			const qRole = params.get('role');
+			if (qRole === 'resident' || qRole === 'officer') {
+				role = qRole;
+			}
+		} catch {
+			// Ignore parsing issues
+		}
+	});
+
+	async function handleLogin() {
+		if (isLoading) return;
+
+		isLoading = true;
+		errorMessage = '';
+
+		try {
+			const { data, error } = await supabase.auth.signInWithPassword({
+				email: email.trim().toLowerCase(),
+				password
+			});
+
+			if (error || !data.user) {
+				throw new Error(error?.message ?? 'Invalid email or password.');
+			}
+
+			const { data: profile, error: profileError } = await supabase
+				.from('users')
+				.select('id, full_name, role')
+				.eq('id', data.user.id)
+				.maybeSingle();
+
+			if (profileError) {
+				throw new Error(profileError.message);
+			}
+
+			const resolvedRole = profile?.role ?? 'Resident';
+			const isOfficer = officerRoles.includes(resolvedRole);
+
+			if (role === 'officer' && !isOfficer) {
+				throw new Error('This account is not authorized for officer access.');
+			}
+
+			if (role === 'resident' && isOfficer) {
+				throw new Error('Please switch to the Officer login option for this account.');
+			}
+
+			const sessionUser = {
+				id: profile?.id ?? data.user.id,
+				username: profile?.full_name ?? data.user.email?.split('@')[0] ?? 'User',
+				email: data.user.email,
+				role: resolvedRole,
+				isAuthenticated: true
+			};
+
+			localStorage.setItem('user', JSON.stringify(sessionUser));
+
+			goto(isOfficer ? '/dashboard' : '/residents');
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Unable to sign you in right now.';
+		} finally {
+			isLoading = false;
+		}
+	}
 </script>
 
 <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
@@ -168,21 +149,21 @@ let storedUsers: StoredUser[] = [];
       <form class="mt-8 space-y-6 relative z-10" on:submit|preventDefault={handleLogin} in:fly={{ y: 20, duration: 600, delay: 600 }}>
         <div class="rounded-md shadow-sm space-y-5">
           <div class="group relative">
-            <label for="username" class="block text-sm font-medium text-gray-700 mb-1 ml-1">Username</label>
+            <label for="email" class="block text-sm font-medium text-gray-700 mb-1 ml-1">Email address</label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <svg class="h-5 w-5 text-gray-400 group-focus-within:text-primary-500 transition-colors duration-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                  <path fill-rule="evenodd" d="M2.003 5.884l8 4.8a1 1 0 00.994 0l8-4.8A1 1 0 0018 4H2a1 1 0 00.997 1.884zM18 8.118l-7.447 4.47a3 3 0 01-3.106 0L0 8.118V15a2 2 0 002 2h16a2 2 0 002-2V8.118z" clip-rule="evenodd" />
                 </svg>
               </div>
               <input
-                id="username"
-                name="username"
-                type="text"
+                id="email"
+                name="email"
+                type="email"
                 required
-                bind:value={username}
+                bind:value={email}
                 class="appearance-none block w-full pl-10 px-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 sm:text-sm"
-                placeholder="Enter your username"
+                placeholder="your@email.com"
               />
             </div>
           </div>
@@ -260,19 +241,6 @@ let storedUsers: StoredUser[] = [];
         <a class="text-indigo-600 hover:underline ml-1" href="/signup">Create an account</a>
       </div>
       
-      <div class="text-center text-sm text-gray-600 mt-6">
-        <p class="font-medium mb-2">Demo Accounts:</p>
-        <div class="grid grid-cols-2 gap-3 mt-2">
-          {#each officialAccounts as account}
-            <div class="text-xs bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-primary-200 hover:bg-gray-100 transition-all duration-200 shadow-sm">
-              <div class="mb-1"><span class="font-semibold text-gray-700">Username:</span> {account.username}</div>
-              <div class="mb-1"><span class="font-semibold text-gray-700">Password:</span> {account.password}</div>
-              <div><span class="font-semibold text-gray-700">Role:</span> <span class="text-primary-600">{account.role}</span></div>
-            </div>
-          {/each}
-        </div>
-        <div class="mt-4 text-xs text-gray-500">Click on a demo account to use it</div>
-      </div>
     </div>
   {/if}
   </PageTransition>

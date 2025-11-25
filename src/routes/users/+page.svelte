@@ -25,7 +25,7 @@
   let statusFilter = 'All';
   let isSaving = false;
 
-  const roles = ['Admin', 'Editor', 'Viewer', 'Police Officer', 'Resident', 'Crime Analyst', 'Police Chief'];
+  const roles = ['Resident', 'Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator'];
   const statuses = ['All', 'Active', 'Inactive'];
 
   // Form state
@@ -34,6 +34,7 @@
     email: '',
     full_name: '',
     role: 'Resident',
+    password: '',
     is_active: true
   };
 
@@ -66,6 +67,7 @@
       email: '',
       full_name: '',
       role: 'Resident',
+      password: '',
       is_active: true
     };
     showAddModal = true;
@@ -95,6 +97,7 @@
       email: '',
       full_name: '',
       role: 'Resident',
+      password: '',
       is_active: true
     };
   }
@@ -108,13 +111,23 @@
 
     isSaving = true;
     try {
-    const payload = {
+    const payload: any = {
       username: userForm.username,
       email: userForm.email,
       full_name: userForm.full_name || userForm.username,
       role: userForm.role,
       is_active: userForm.is_active
     };
+
+    // Include password only when creating new user (not editing)
+    if (!editingUser && userForm.password) {
+      if (userForm.password.length < 8) {
+        alert('Password must be at least 8 characters long');
+        isSaving = false;
+        return;
+      }
+      payload.password = userForm.password;
+    }
 
       let response: Response;
       if (editingUser) {
@@ -175,9 +188,7 @@
 
   function getRoleColor(role: string) {
     const colors: Record<string, string> = {
-      'Admin': 'bg-red-100 text-red-700 border-red-200',
-      'Editor': 'bg-blue-100 text-blue-700 border-blue-200',
-      'Viewer': 'bg-gray-100 text-gray-700 border-gray-200',
+      'Administrator': 'bg-red-100 text-red-700 border-red-200',
       'Police Officer': 'bg-indigo-100 text-indigo-700 border-indigo-200',
       'Police Chief': 'bg-purple-100 text-purple-700 border-purple-200',
       'Crime Analyst': 'bg-teal-100 text-teal-700 border-teal-200',
@@ -206,7 +217,7 @@
   $: totalUsers = users.length;
   $: activeUsers = users.filter(u => u.is_active).length;
   $: inactiveUsers = users.filter(u => !u.is_active).length;
-  $: adminUsers = users.filter(u => u.role === 'Admin').length;
+  $: adminUsers = users.filter(u => u.role === 'Administrator').length;
 </script>
 
 <div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
@@ -481,14 +492,31 @@
                 {/each}
               </select>
             </div>
-            <div class="md:col-span-2">
-              <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p class="text-sm text-blue-700">
-                  <strong>Note:</strong> Password management is handled by Supabase Auth system. 
-                  To manage passwords, use the Supabase Dashboard or Auth API.
+            {#if !editingUser}
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Password {editingUser ? '' : '(Optional)'}</label>
+                <input 
+                  type="password" 
+                  bind:value={userForm.password}
+                  placeholder={editingUser ? 'Leave blank to keep current' : 'Set initial password (min 8 chars)'}
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  {editingUser 
+                    ? 'Leave blank to keep current password. Use Supabase Dashboard to reset passwords.'
+                    : 'If provided, creates an auth account the user can log in with immediately.'}
                 </p>
               </div>
-            </div>
+            {:else}
+              <div class="md:col-span-2">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p class="text-sm text-blue-700">
+                    <strong>Note:</strong> Password management is handled by Supabase Auth system. 
+                    To reset passwords, use the Supabase Dashboard or Auth API.
+                  </p>
+                </div>
+              </div>
+            {/if}
             <div class="flex items-center">
               <input 
                 type="checkbox" 

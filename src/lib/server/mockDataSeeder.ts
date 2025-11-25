@@ -1,14 +1,14 @@
 import type { Report } from './reportsStore';
 import { insertReportIntoDatabase } from './reportRepository';
+import { supabase } from './supabase';
 
 /**
  * Generate comprehensive mock data for analytics
  * This matches the exact data from the SQL script provided
  */
-export function generateMockReports(): Report[] {
+export function generateMockReports(reporterId = '00000000-0000-0000-0000-000000000001'): Report[] {
 	const now = new Date();
 	const reports: Report[] = [];
-	const reporterId = '00000000-0000-0000-0000-000000000001';
 
 	// Helper to create date from string (YYYY-MM-DD)
 	const createDate = (dateStr: string) => {
@@ -322,12 +322,147 @@ export function generateMockReports(): Report[] {
 	return reports;
 }
 
+type AccountSeed = {
+	email: string;
+	password: string;
+	fullName: string;
+	role: string;
+};
+
+const DEFAULT_RESIDENT_REPORTER_ID = '00000000-0000-0000-0000-000000000001';
+
+const MOCK_RESIDENT_ACCOUNT: AccountSeed = {
+	email: 'mock.reporter@test.com',
+	password: 'ResidentSecure!1',
+	fullName: 'Mock Reporter',
+	role: 'Resident'
+};
+
+const OFFICER_ACCOUNTS: AccountSeed[] = [
+	{
+		email: 'chief@bsafe.local',
+		password: 'ChiefSecure!1',
+		fullName: 'Chief Maria Dela Cruz',
+		role: 'Police Chief'
+	},
+	{
+		email: 'analyst@bsafe.local',
+		password: 'AnalystSecure!1',
+		fullName: 'Analyst Jose Ramirez',
+		role: 'Crime Analyst'
+	},
+	{
+		email: 'officer1@bsafe.local',
+		password: 'OfficerSecure!1',
+		fullName: 'Officer Lea Santiago',
+		role: 'Police Officer'
+	},
+	{
+		email: 'admin@bsafe.local',
+		password: 'AdminSecure!1',
+		fullName: 'Administrator Carlo Reyes',
+		role: 'Administrator'
+	}
+];
+
+async function findAuthUserIdByEmail(email: string): Promise<string | null> {
+	const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+
+	if (error) {
+		console.error('[Seeder] Failed to list auth users:', error);
+		return null;
+	}
+
+	const normalized = email.toLowerCase();
+	const match = data?.users?.find(user => user.email?.toLowerCase() === normalized);
+	return match?.id ?? null;
+}
+
+async function ensureAccountSeed(seed: AccountSeed) {
+	let createdAuthUser = false;
+	let userId = await findAuthUserIdByEmail(seed.email);
+
+	if (!userId) {
+		const { data, error } = await supabase.auth.admin.createUser({
+			email: seed.email,
+			password: seed.password,
+			email_confirm: true,
+			user_metadata: { full_name: seed.fullName, role: seed.role }
+		});
+
+		if (error && !error.message?.toLowerCase().includes('already registered')) {
+			console.error(`[Seeder] Unable to create auth user for ${seed.email}:`, error.message);
+		} else {
+			userId = data?.user?.id ?? null;
+			createdAuthUser = Boolean(data?.user);
+		}
+	}
+
+	if (!userId) {
+		userId = await findAuthUserIdByEmail(seed.email);
+	}
+
+	let profileSynced = false;
+	if (userId) {
+		const { error: profileError } = await supabase
+			.from('users')
+			.upsert(
+				{
+					id: userId,
+					email: seed.email,
+					full_name: seed.fullName,
+					role: seed.role,
+					is_active: true
+				},
+				{ onConflict: 'id' }
+			);
+
+		if (profileError) {
+			console.error(`[Seeder] Failed to sync profile for ${seed.email}:`, profileError.message);
+		} else {
+			profileSynced = true;
+		}
+	}
+
+	return { userId, createdAuthUser, profileSynced };
+}
+
+async function seedMockResidentAccount() {
+	const result = await ensureAccountSeed(MOCK_RESIDENT_ACCOUNT);
+	const reporterId = result.userId ?? DEFAULT_RESIDENT_REPORTER_ID;
+	return { reporterId, createdAuthUser: result.createdAuthUser, profileSynced: result.profileSynced };
+}
+
+export async function seedOfficerAccounts() {
+	let createdAuthUsers = 0;
+	let profilesSynced = 0;
+
+	for (const account of OFFICER_ACCOUNTS) {
+		const result = await ensureAccountSeed(account);
+		if (result.profileSynced) {
+			profilesSynced++;
+		}
+		if (result.createdAuthUser) {
+			createdAuthUsers++;
+		}
+	}
+
+	return { createdAuthUsers, profilesSynced };
+}
+
 /**
  * Seed mock data into the database
  * Call this function to populate the database with mock reports
  */
-export async function seedMockDataToDatabase(): Promise<{ success: number; failed: number }> {
-	const mockReports = generateMockReports();
+export async function seedMockDataToDatabase(): Promise<{
+	success: number;
+	failed: number;
+	officersCreated: number;
+	officerProfilesSynced: number;
+	reporterUserId: string;
+}> {
+	const residentSeed = await seedMockResidentAccount();
+	const mockReports = generateMockReports(residentSeed.reporterId);
 	const expectedCount = 35;
 	
 	if (mockReports.length !== expectedCount) {
@@ -352,11 +487,19 @@ export async function seedMockDataToDatabase(): Promise<{ success: number; faile
 		}
 	}
 
+	const officerResults = await seedOfficerAccounts();
+
 	if (success === expectedCount) {
 		console.log(`[Seeder] ✓ SUCCESS: All ${success} reports seeded successfully!`);
 	} else {
 		console.log(`[Seeder] Completed: ${success} successful, ${failed} failed (Expected: ${expectedCount})`);
 	}
 	
-	return { success, failed };
+	return {
+		success,
+		failed,
+		officersCreated: officerResults.createdAuthUsers,
+		officerProfilesSynced: officerResults.profilesSynced,
+		reporterUserId: residentSeed.reporterId
+	};
 }
