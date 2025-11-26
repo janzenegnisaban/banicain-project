@@ -1866,7 +1866,8 @@
     >
       <!-- Close Button -->
       <button 
-        class="absolute top-4 right-4 z-10 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-colors"
+        type="button"
+        class="absolute top-4 right-4 z-10 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-colors pointer-events-auto"
         aria-label="Close media viewer"
         on:click={() => {
           showMediaViewer = false;
@@ -1881,8 +1882,9 @@
 
       <!-- Zoom Controls -->
       {#if selectedMedia.type === 'image'}
-        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
+        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-auto">
           <button 
+            type="button"
             class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
             aria-label="Zoom in"
             on:click|stopPropagation={() => {
@@ -1894,6 +1896,7 @@
             </svg>
           </button>
           <button 
+            type="button"
             class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
             aria-label="Zoom out"
             on:click|stopPropagation={() => {
@@ -1905,6 +1908,7 @@
             </svg>
           </button>
           <button 
+            type="button"
             class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
             aria-label="Reset zoom"
             on:click|stopPropagation={() => {
@@ -1918,7 +1922,7 @@
         </div>
 
         <!-- Zoom Level Indicator -->
-        <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 bg-white/90 text-gray-800 rounded-lg px-4 py-2 shadow-lg text-sm font-medium">
+        <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 bg-white/90 text-gray-800 rounded-lg px-4 py-2 shadow-lg text-sm font-medium pointer-events-none">
           {Math.round(mediaZoom * 100)}%
         </div>
       {/if}
@@ -1926,7 +1930,7 @@
       <!-- Media Display -->
       <div 
         class="max-w-full max-h-[95vh] overflow-auto pointer-events-auto" 
-        style="transform: scale({mediaZoom}); transform-origin: center;"
+        style="transform: scale({mediaZoom}); transform-origin: center; transition: transform 0.2s ease-out;"
       >
         {#if selectedMedia.type === 'image'}
           <img 
