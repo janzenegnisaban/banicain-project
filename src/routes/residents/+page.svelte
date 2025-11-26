@@ -15,7 +15,7 @@
 
   let name = '';
   let address = '';
-  let contacts = '';
+  let contact = '';
   let notes = '';
   let typeOfReport = '';
   let otherType = '';
@@ -37,6 +37,26 @@
   let myReportsStream: EventSource | null = null;
   let addressError = '';
   let contactError = '';
+  let selectedLocationShortcut = '';
+
+  const banicainLocations = [
+    'Banicain Barangay Hall, Banicain, Olongapo City, Zambales',
+    'Banicain Elementary School, Banicain, Olongapo City, Zambales',
+    'Banicain Health Center, Banicain, Olongapo City, Zambales',
+    'Banicain Market, Banicain, Olongapo City, Zambales',
+    'Banicain Church, Banicain, Olongapo City, Zambales',
+    'Banicain Basketball Court, Banicain, Olongapo City, Zambales',
+    'Banicain Covered Court, Banicain, Olongapo City, Zambales',
+    'Banicain Main Road, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 1, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 2, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 3, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 4, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 5, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 6, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 7, Banicain, Olongapo City, Zambales',
+    'Banicain Purok 8, Banicain, Olongapo City, Zambales'
+  ];
 
   const reportTypes = [
     'Theft',
@@ -76,18 +96,35 @@
   function resetForm() {
     name = '';
     address = '';
-    contacts = '';
+    contact = '';
     addressError = '';
     contactError = '';
     notes = '';
     typeOfReport = '';
     otherType = '';
+    selectedLocationShortcut = '';
     attachments = [];
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     previewUrls = [];
     submitError = '';
     // Also clear draft
     localStorage.removeItem(autosaveKey);
+  }
+
+  // Reactive statement: when location shortcut is selected, update address
+  $: if (selectedLocationShortcut) {
+    address = selectedLocationShortcut;
+    addressError = '';
+  }
+
+  function handleContactInput(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const value = input.value;
+    // Only allow numbers, +, and spaces
+    const cleaned = value.replace(/[^\d+\s]/g, '');
+    if (cleaned !== value) {
+      contact = cleaned;
+    }
   }
 
   function getStatusBadgeClasses(status: Report['status']) {
@@ -165,7 +202,7 @@
         const draft = JSON.parse(saved);
         name = draft.name || '';
         address = draft.address || '';
-        contacts = draft.contacts || '';
+        contact = draft.contact || draft.contacts || '';
         notes = draft.notes || '';
         typeOfReport = draft.typeOfReport || '';
       }
@@ -173,7 +210,7 @@
 
     // Autosave every 5s
     autosaveId = window.setInterval(() => {
-      const draft = { name, address, contacts, notes, typeOfReport };
+      const draft = { name, address, contact, notes, typeOfReport };
       localStorage.setItem(autosaveKey, JSON.stringify(draft));
     }, 5000);
 
@@ -205,7 +242,7 @@
       return;
     }
 
-    if (!isValidPhilippineMobileNumber(contacts)) {
+    if (!isValidPhilippineMobileNumber(contact)) {
       contactError = 'Please enter a valid Philippine mobile number (e.g. 09XXXXXXXXX or +639XXXXXXXXX).';
       return;
     }
@@ -229,7 +266,7 @@
         reporter: {
           name,
           address,
-          contact: contacts,
+          contact: contact,
           typeOfReport
         },
         message: notes,
@@ -423,7 +460,19 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Address</label>
-            <input type="text" bind:value={address} placeholder="Your address" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            <div class="mb-2">
+              <label class="block text-xs font-medium text-gray-600 mb-1">Quick Select Location (Optional)</label>
+              <select
+                bind:value={selectedLocationShortcut}
+                class="w-full px-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              >
+                <option value="">Select a location...</option>
+                {#each banicainLocations as location}
+                  <option value={location}>{location}</option>
+                {/each}
+              </select>
+            </div>
+            <input type="text" bind:value={address} placeholder="Your address in Banicain, Olongapo City, Zambales" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
             {#if addressError}
               <p class="mt-1 text-xs text-red-600">{addressError}</p>
             {:else}
@@ -431,12 +480,19 @@
             {/if}
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Contacts</label>
-            <input type="text" bind:value={contacts} placeholder="Phone or email" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            <label class="block text-sm font-medium text-gray-700 mb-2">Contact</label>
+            <input 
+              type="tel" 
+              bind:value={contact} 
+              on:input={handleContactInput}
+              placeholder="09XXXXXXXXX or +639XXXXXXXXX" 
+              pattern="[0-9+\s]*"
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" 
+            />
             {#if contactError}
               <p class="mt-1 text-xs text-red-600">{contactError}</p>
             {:else}
-              <p class="mt-1 text-xs text-gray-500">For mobile, use 09XXXXXXXXX or +639XXXXXXXXX.</p>
+              <p class="mt-1 text-xs text-gray-500">Philippine mobile number only (numbers and +).</p>
             {/if}
           </div>
           <div>
@@ -504,7 +560,7 @@
               isSubmitting ||
               !name ||
               !address ||
-              !contacts ||
+              !contact ||
               !typeOfReport ||
               (typeOfReport === 'Other (not listed)' && !otherType)
             }
