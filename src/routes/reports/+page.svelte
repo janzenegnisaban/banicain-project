@@ -212,6 +212,9 @@
   let showDeleteConfirm = false;
   let reportToDelete: Report | null = null;
   let editingReport: Report | null = null;
+  let showMediaViewer = false;
+  let selectedMedia: { url: string; name: string; type: 'image' | 'video' } | null = null;
+  let mediaZoom = 1;
   let es: EventSource | null = null;
   let streamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedEvidence: EvidenceBuckets = { media: [], text: [] };
@@ -1429,18 +1432,38 @@
                     {#if evidence.media.length > 0}
                       <div class="grid grid-cols-2 gap-2">
                         {#each evidence.media.slice(0, 4) as media}
-                          <div class="relative group">
+                          <button
+                            type="button"
+                            class="relative group text-left p-0 bg-transparent border-none cursor-pointer"
+                            on:click={() => {
+                              selectedMedia = { url: media.url, name: media.name, type: media.type };
+                              mediaZoom = 1;
+                              showMediaViewer = true;
+                            }}
+                            on:keydown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                selectedMedia = { url: media.url, name: media.name, type: media.type };
+                                mediaZoom = 1;
+                                showMediaViewer = true;
+                              }
+                            }}
+                            aria-label="View {media.name} in full screen"
+                          >
                             {#if media.type === 'image'}
-                              <img src={media.url} alt={media.name} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" loading="lazy" />
+                              <img src={media.url} alt={media.name} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-400 transition-all" loading="lazy" />
                             {:else}
-                              <video src={media.url} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" controls preload="metadata">
+                              <video src={media.url} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-400 transition-all" controls preload="metadata" on:click|stopPropagation>
                                 <track kind="captions" />
                               </video>
                             {/if}
                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs p-1.5 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
                               <p class="truncate font-medium">{media.name}</p>
                             </div>
-                          </div>
+                            {#if media.type === 'image'}
+                              <div class="absolute top-1 right-1 bg-indigo-600/80 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">Zoom</div>
+                            {/if}
+                          </button>
                         {/each}
                       </div>
                       {#if evidence.media.length > 4}
@@ -1485,16 +1508,36 @@
                     <div class="text-xs text-gray-500 mb-2">Resident Media ({evidence.media.length})</div>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {#each evidence.media as media}
-                        <div class="space-y-1">
+                        <button
+                          type="button"
+                          class="space-y-1 text-left p-0 bg-transparent border-none cursor-pointer group"
+                          on:click={() => {
+                            selectedMedia = { url: media.url, name: media.name, type: media.type };
+                            mediaZoom = 1;
+                            showMediaViewer = true;
+                          }}
+                          on:keydown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selectedMedia = { url: media.url, name: media.name, type: media.type };
+                              mediaZoom = 1;
+                              showMediaViewer = true;
+                            }
+                          }}
+                          aria-label="View {media.name} in full screen"
+                        >
                           {#if media.type === 'image'}
-                            <img src={media.url} alt={media.name} class="w-full h-24 object-cover rounded-lg border border-gray-100" loading="lazy" />
+                            <img src={media.url} alt={media.name} class="w-full h-24 object-cover rounded-lg border border-gray-100 group-hover:border-indigo-400 group-hover:shadow-lg transition-all" loading="lazy" />
                           {:else}
-                            <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-100" controls preload="metadata">
+                            <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-100 group-hover:border-indigo-400 group-hover:shadow-lg transition-all" controls preload="metadata" on:click|stopPropagation>
                               <track kind="captions" />
                             </video>
                           {/if}
                           <div class="text-xs text-gray-600 truncate">{media.name}</div>
-                        </div>
+                          {#if media.type === 'image'}
+                            <div class="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">Click to zoom</div>
+                          {/if}
+                        </button>
                       {/each}
                     </div>
                   </div>
@@ -1678,16 +1721,36 @@
                 <h3 class="text-lg font-semibold text-gray-800 mb-3">Resident Media ({selectedEvidence.media.length})</h3>
                 <div class="grid grid-cols-2 gap-4">
                   {#each selectedEvidence.media as media}
-                    <div>
+                    <button
+                      type="button"
+                      class="cursor-pointer group text-left"
+                      on:click={() => {
+                        selectedMedia = { url: media.url, name: media.name, type: media.type };
+                        mediaZoom = 1;
+                        showMediaViewer = true;
+                      }}
+                      on:keydown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          selectedMedia = { url: media.url, name: media.name, type: media.type };
+                          mediaZoom = 1;
+                          showMediaViewer = true;
+                        }
+                      }}
+                      aria-label="View {media.name} in full screen"
+                    >
                       {#if media.type === 'image'}
-                        <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border border-gray-100" loading="lazy" />
+                        <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border border-gray-100 group-hover:border-indigo-400 group-hover:shadow-lg transition-all" loading="lazy" />
                       {:else}
-                        <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-100" controls preload="metadata">
+                        <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-100 group-hover:border-indigo-400 group-hover:shadow-lg transition-all" controls preload="metadata" on:click|stopPropagation>
                           <track kind="captions" />
                         </video>
                       {/if}
                       <div class="text-xs text-gray-600 mt-1 truncate">{media.name}</div>
-                    </div>
+                      {#if media.type === 'image'}
+                        <div class="text-xs text-indigo-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Click to zoom</div>
+                      {/if}
+                    </button>
                   {/each}
                 </div>
               </div>
@@ -1771,6 +1834,122 @@
             Edit Case
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Media Viewer Modal -->
+{#if showMediaViewer && selectedMedia}
+  <div 
+    class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[60] flex items-center justify-center p-4" 
+    in:fade={{ duration: 200 }} 
+    role="dialog"
+    aria-modal="true"
+    aria-label="Media viewer"
+    tabindex="-1"
+    on:click={() => {
+      showMediaViewer = false;
+      selectedMedia = null;
+      mediaZoom = 1;
+    }}
+    on:keydown={(e) => {
+      if (e.key === 'Escape') {
+        showMediaViewer = false;
+        selectedMedia = null;
+        mediaZoom = 1;
+      }
+    }}
+  >
+    <div
+      class="relative max-w-[95vw] max-h-[95vh] flex items-center justify-center pointer-events-none"
+    >
+      <!-- Close Button -->
+      <button 
+        class="absolute top-4 right-4 z-10 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-colors"
+        aria-label="Close media viewer"
+        on:click={() => {
+          showMediaViewer = false;
+          selectedMedia = null;
+          mediaZoom = 1;
+        }}
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+
+      <!-- Zoom Controls -->
+      {#if selectedMedia.type === 'image'}
+        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
+          <button 
+            class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
+            aria-label="Zoom in"
+            on:click|stopPropagation={() => {
+              if (mediaZoom < 3) mediaZoom += 0.25;
+            }}
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
+            </svg>
+          </button>
+          <button 
+            class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
+            aria-label="Zoom out"
+            on:click|stopPropagation={() => {
+              if (mediaZoom > 0.5) mediaZoom -= 0.25;
+            }}
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"></path>
+            </svg>
+          </button>
+          <button 
+            class="bg-white/90 hover:bg-white text-gray-800 rounded-lg p-2 shadow-lg transition-colors"
+            aria-label="Reset zoom"
+            on:click|stopPropagation={() => {
+              mediaZoom = 1;
+            }}
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Zoom Level Indicator -->
+        <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 bg-white/90 text-gray-800 rounded-lg px-4 py-2 shadow-lg text-sm font-medium">
+          {Math.round(mediaZoom * 100)}%
+        </div>
+      {/if}
+
+      <!-- Media Display -->
+      <div 
+        class="max-w-full max-h-[95vh] overflow-auto pointer-events-auto" 
+        style="transform: scale({mediaZoom}); transform-origin: center;"
+      >
+        {#if selectedMedia.type === 'image'}
+          <img 
+            src={selectedMedia.url} 
+            alt={selectedMedia.name} 
+            class="max-w-full max-h-[95vh] object-contain rounded-lg shadow-2xl"
+            draggable="false"
+          />
+        {:else}
+          <video 
+            src={selectedMedia.url} 
+            class="max-w-full max-h-[95vh] object-contain rounded-lg shadow-2xl"
+            controls
+            autoplay
+          >
+            <track kind="captions" />
+          </video>
+        {/if}
+      </div>
+
+      <!-- Media Name -->
+      <div class="absolute bottom-4 right-4 z-10 bg-white/90 text-gray-800 rounded-lg px-4 py-2 shadow-lg text-sm font-medium max-w-xs truncate pointer-events-none">
+        {selectedMedia.name}
       </div>
     </div>
   </div>

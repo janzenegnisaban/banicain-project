@@ -349,7 +349,7 @@ function handleResidentEntry() {
   <!-- Footer -->
   <footer class="bg-slate-900 text-gray-300 py-12">
     <div class="container mx-auto px-4">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         <div>
           <h3 class="text-white font-bold text-lg mb-4">B-SAFE</h3>
           <p class="text-gray-400">
@@ -364,33 +364,11 @@ function handleResidentEntry() {
             <li><a href="/residents" class="hover:text-white transition">Report Incident</a></li>
             <li><a href="/login" class="hover:text-white transition">Login</a></li>
             <li><a href="/signup" class="hover:text-white transition">Sign Up</a></li>
-            <li><a href="/dashboard" class="hover:text-white transition">Dashboard</a></li>
           </ul>
-        </div>
-        <div>
-          <h3 class="text-white font-bold text-lg mb-4">Contact</h3>
-          <p class="text-gray-400 mb-3">
-            Barangay Hall<br>
-            Brgy. Banicain, Olongapo City, Zambales
-          </p>
-          <div class="space-y-2">
-            <a href="tel:+63" class="block text-blue-400 hover:text-blue-300 transition flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-              </svg>
-              Contact Barangay Office
-            </a>
-            <a href="mailto:info@bsafe-banicain.gov.ph" class="block text-blue-400 hover:text-blue-300 transition flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-              </svg>
-              Email Us
-            </a>
-          </div>
         </div>
       </div>
       <div class="border-t border-gray-800 pt-8 text-center text-gray-400">
-        <p>&copy; 2024 B-SAFE - Brgy. Banicain, Olongapo City, Zambales. All rights reserved.</p>
+        <p>&copy; 2025 ATHENA B-SAFE - Brgy. Banicain, Olongapo City, Zambales. All rights reserved.</p>
       </div>
     </div>
   </footer>
