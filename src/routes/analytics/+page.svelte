@@ -2,7 +2,7 @@
   import Sidebar from '$lib/components/Sidebar.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-  import type { Report } from '$lib/server/reportsStore';
+import type { Report } from '$lib/types/report';
   import { jsPDF } from 'jspdf';
   
   // Reports data

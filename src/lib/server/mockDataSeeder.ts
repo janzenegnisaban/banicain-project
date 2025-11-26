@@ -1,4 +1,4 @@
-import type { Report } from './reportsStore';
+import type { Report } from '$lib/types/report';
 import { insertReportIntoDatabase } from './reportRepository';
 import { supabase } from './supabase';
 

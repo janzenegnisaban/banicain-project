@@ -1,13 +1,14 @@
 import type { RequestHandler } from './$types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
 	addReport,
 	deleteReport as deleteLocalReport,
 	getReports,
 	replaceReports,
 	seedIfEmpty,
-	type Report,
 	upsertReportSnapshot
 } from '$lib/server/reportsStore';
+import type { Report } from '$lib/types/report';
 import {
 	deleteReportFromDatabase,
 	fetchReportsFromDatabase,
@@ -15,47 +16,13 @@ import {
 	updateReportInDatabase
 } from '$lib/server/reportRepository';
 import { seedMockDataToDatabase } from '$lib/server/mockDataSeeder';
+import { getSupabaseClientForRequest } from '$lib/server/supabase';
 
-async function loadReports(): Promise<Report[]> {
-	try {
-		const remote = await fetchReportsFromDatabase();
-		if (remote.length > 0) {
-			replaceReports(remote);
-			return remote;
-		}
-	} catch (error) {
-		console.error('Failed to load reports from Supabase', error);
-	}
-
-	// If database is empty, seed with comprehensive mock data
-	if (getReports().length === 0) {
-		console.log('[API] Database is empty, seeding mock data...');
-		try {
-			const seedResult = await seedMockDataToDatabase();
-			if (seedResult.success > 0) {
-				console.log(`[API] Successfully seeded ${seedResult.success} mock reports`);
-				// Fetch the newly seeded reports
-				const seededReports = await fetchReportsFromDatabase();
-				if (seededReports.length > 0) {
-					replaceReports(seededReports);
-					return seededReports;
-				}
-			}
-		} catch (error) {
-			console.error('[API] Failed to seed mock data:', error);
-		}
-	}
-
-	// Fallback to minimal seed if mock seeding failed
-	const seeded = seedIfEmpty();
-	if (seeded) {
-		try {
-			await insertReportIntoDatabase(seeded);
-		} catch (error) {
-			console.error('Unable to persist seed report to Supabase', error);
-		}
-	}
-	return getReports();
+async function loadReports(client?: SupabaseClient): Promise<Report[]> {
+	// Source of truth is Supabase. No more in-memory seeding here.
+	const remote = await fetchReportsFromDatabase(client);
+	replaceReports(remote);
+	return remote;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -106,42 +73,40 @@ function buildNewReport(payload: Record<string, unknown>): Report {
 	};
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
+	const authHeader = request.headers.get('authorization') ?? undefined;
+	const dbClient = getSupabaseClientForRequest(authHeader);
 	const reporterId = url.searchParams.get('reporterId');
-	let reports = await loadReports();
-	let dataSource = 'memory'; // Default
-	
-	// Determine data source
+
 	try {
-		const dbReports = await fetchReportsFromDatabase();
-		if (dbReports.length > 0) {
-			dataSource = 'database';
-			console.log(`[API] Serving ${dbReports.length} reports from database`);
-		} else {
-			console.log(`[API] No database reports found, using in-memory store`);
+		let reports = await loadReports(dbClient);
+
+		if (reporterId) {
+			reports = reports.filter((report) => report.reporterId === reporterId);
 		}
+
+		return new Response(JSON.stringify({ reports, source: 'database' }), {
+			headers: { 'content-type': 'application/json' }
+		});
 	} catch (error) {
-		console.error('[API] Error checking database:', error);
-		dataSource = 'memory';
+		console.error('[API] Failed to load reports:', error);
+		return new Response(JSON.stringify({ reports: [], source: 'database', error: 'Failed to load reports' }), {
+			status: 500,
+			headers: { 'content-type': 'application/json' }
+		});
 	}
-	
-	if (reporterId) {
-		reports = reports.filter(report => report.reporterId === reporterId);
-	}
-	
-	return new Response(JSON.stringify({ reports, source: dataSource }), {
-		headers: { 'content-type': 'application/json' }
-	});
 };
 
 export const POST: RequestHandler = async ({ request }) => {
+	const authHeader = request.headers.get('authorization') ?? undefined;
+	const dbClient = getSupabaseClientForRequest(authHeader);
 	const body = await request.json().catch(() => ({}));
 	const newReport = buildNewReport(body);
 	console.log('[API] Creating new report:', newReport.id);
 
 	let persisted: Report | null = null;
 	try {
-		persisted = await insertReportIntoDatabase(newReport);
+		persisted = await insertReportIntoDatabase(newReport, dbClient);
 		console.log('[API] Report successfully persisted to Supabase:', persisted.id);
 	} catch (error) {
 		console.error('[API] Failed to persist report to Supabase:', error);
@@ -167,6 +132,8 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 export const PUT: RequestHandler = async ({ request, url }) => {
+	const authHeader = request.headers.get('authorization') ?? undefined;
+	const dbClient = getSupabaseClientForRequest(authHeader);
 	const id = url.searchParams.get('id');
 	if (!id) {
 		return new Response(JSON.stringify({ error: 'Report ID is required' }), {
@@ -196,7 +163,7 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 
 	let updated: Report | null = null;
 	try {
-		updated = await updateReportInDatabase(id, supabasePayload);
+		updated = await updateReportInDatabase(id, supabasePayload, dbClient);
 	} catch (error) {
 		console.error('Failed to update Supabase report', error);
 	}
@@ -228,7 +195,9 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 	});
 };
 
-export const DELETE: RequestHandler = async ({ url }) => {
+export const DELETE: RequestHandler = async ({ url, request }) => {
+	const authHeader = request.headers.get('authorization') ?? undefined;
+	const dbClient = getSupabaseClientForRequest(authHeader);
 	const id = url.searchParams.get('id');
 	if (!id) {
 		return new Response(JSON.stringify({ error: 'Report ID is required' }), {
@@ -238,7 +207,7 @@ export const DELETE: RequestHandler = async ({ url }) => {
 	}
 
 	try {
-		await deleteReportFromDatabase(id);
+		await deleteReportFromDatabase(id, dbClient);
 	} catch (error) {
 		console.error('Failed to delete Supabase report', error);
 	}

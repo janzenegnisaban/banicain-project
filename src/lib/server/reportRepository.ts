@@ -1,121 +1,25 @@
-import type { Report } from './reportsStore';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Report } from '$lib/types/report';
+import {
+	REPORT_SELECT,
+	type ReportRow,
+	type ReportUpdateRow,
+	asStringArray,
+	groupUpdatesByReportId,
+	mapPriorityToDb,
+	mapRowToReport,
+	mapStatusToDb
+} from '$lib/reportMapper';
 import { supabase } from './supabase';
 
-type ReportRow = {
-	id: string;
-	title: string;
-	type: string;
-	status: string;
-	priority: string;
-	location: string | null;
-	date: string | null;
-	time: string | null;
-	officer: string | null;
-	description: string | null;
-	evidence: string[] | string | null;
-	suspects: string[] | string | null;
-	victims: string[] | string | null;
-	damage: string | null;
-	notes: string | null;
-	created_at?: string | null;
-	updated_at?: string | null;
-	reporter_id?: string | null;
-};
-
-const REPORT_SELECT =
-	'id,title,type,status,priority,location,date,time,officer,description,evidence,suspects,victims,damage,notes,reporter_id,created_at,updated_at';
-
-const fallbackDate = () => new Date().toISOString().slice(0, 10);
-const fallbackTime = () => new Date().toTimeString().slice(0, 5);
-
-function asStringArray(value: string[] | string | null | undefined): string[] {
-	if (!value) return [];
-	if (Array.isArray(value)) return value.filter(Boolean);
-	return value ? [value] : [];
-}
-
-function normalizeUpdates(
-	updates: Array<{ note: string; date?: string | null; time?: string | null }> | null | undefined
-): Report['updates'] {
-	if (!updates || updates.length === 0) {
-		return [];
-	}
-	return updates.map(update => ({
-		note: update.note,
-		date: update.date ?? fallbackDate(),
-		time: update.time ?? fallbackTime()
-	}));
-}
-
-// Map database status values to application status values
-function mapStatus(dbStatus: string): Report['status'] {
-	const statusMap: Record<string, Report['status']> = {
-		'open': 'Open',
-		'in_progress': 'Under Investigation',
-		'investigating': 'Under Investigation',
-		'closed': 'Solved',
-		'resolved': 'Solved'
-	};
-	return statusMap[dbStatus.toLowerCase()] || 'Open';
-}
-
-// Map database priority values to application priority values
-function mapPriority(dbPriority: string): Report['priority'] {
-	const priorityMap: Record<string, Report['priority']> = {
-		'low': 'Low',
-		'medium': 'Medium',
-		'high': 'High',
-		'critical': 'Critical'
-	};
-	return priorityMap[dbPriority.toLowerCase()] || 'Medium';
-}
-
-function mapRowToReport(row: ReportRow): Report {
-	return {
-		id: row.id,
-		title: row.title,
-		type: row.type,
-		status: mapStatus(row.status),
-		priority: mapPriority(row.priority),
-		location: row.location ?? 'Unknown',
-		date: row.date ?? fallbackDate(),
-		time: row.time ?? fallbackTime(),
-		officer: row.officer ?? 'Unassigned',
-		description: row.description ?? 'No description provided.',
-		evidence: asStringArray(row.evidence),
-		suspects: asStringArray(row.suspects),
-		victims: (Array.isArray(row.victims) ? row.victims : row.victims ? [row.victims] : []) ?? [],
-		damage: row.damage ?? 'N/A',
-		notes: row.notes ?? '',
-		updates: [], // Updates are fetched separately from report_updates table
-		reporterId: row.reporter_id ?? null
-	};
-}
-
-// Map application status to database status
-function mapStatusToDb(status: Report['status']): string {
-	const statusMap: Record<Report['status'], string> = {
-		'Open': 'open',
-		'Under Investigation': 'investigating',
-		'Solved': 'resolved'
-	};
-	return statusMap[status] || 'open';
-}
-
-// Map application priority to database priority
-function mapPriorityToDb(priority: Report['priority']): string {
-	const priorityMap: Record<Report['priority'], string> = {
-		'Low': 'low',
-		'Medium': 'medium',
-		'High': 'high',
-		'Critical': 'critical'
-	};
-	return priorityMap[priority] || 'medium';
+function resolveClient(client?: SupabaseClient) {
+	return client ?? supabase;
 }
 
 function serializeReport(report: Report) {
 	return {
-		id: report.id,
+		// Let the database generate the UUID for `id`.
+		// The returned row's `id` will be mapped back into the Report type.
 		title: report.title,
 		type: report.type,
 		status: mapStatusToDb(report.status),
@@ -166,11 +70,11 @@ function serializePartial(updates: Partial<Report>) {
 	return payload;
 }
 
-export async function fetchReportsFromDatabase(): Promise<Report[]> {
+export async function fetchReportsFromDatabase(client?: SupabaseClient): Promise<Report[]> {
 	console.log('[Database] Fetching reports from Supabase...');
+	const db = resolveClient(client);
 	
-	// First fetch all reports
-	const { data: reportsData, error: reportsError } = await supabase
+	const { data: reportsData, error: reportsError } = await db
 		.from('reports')
 		.select(REPORT_SELECT)
 		.order('created_at', { ascending: false });
@@ -187,11 +91,10 @@ export async function fetchReportsFromDatabase(): Promise<Report[]> {
 
 	console.log(`[Database] Successfully fetched ${reportsData.length} reports from Supabase`);
 
-	// Fetch updates for all reports
 	const reportIds = reportsData.map(r => r.id);
 	console.log(`[Database] Fetching updates for ${reportIds.length} reports...`);
 	
-	const { data: updatesData } = await supabase
+	const { data: updatesData } = await db
 		.from('report_updates')
 		.select('report_id,comment,created_at')
 		.in('report_id', reportIds)
@@ -201,21 +104,7 @@ export async function fetchReportsFromDatabase(): Promise<Report[]> {
 		console.log(`[Database] Found ${updatesData.length} report updates`);
 	}
 
-	// Group updates by report_id
-	const updatesByReportId = new Map<string, Array<{ note: string; date: string; time: string }>>();
-	if (updatesData) {
-		for (const update of updatesData) {
-			if (!updatesByReportId.has(update.report_id)) {
-				updatesByReportId.set(update.report_id, []);
-			}
-			const date = new Date(update.created_at);
-			updatesByReportId.get(update.report_id)!.push({
-				note: update.comment || 'Update',
-				date: date.toISOString().slice(0, 10),
-				time: date.toTimeString().slice(0, 5)
-			});
-		}
-	}
+	const updatesByReportId = updatesData ? groupUpdatesByReportId(updatesData as ReportUpdateRow[]) : new Map();
 
 	// Map reports and attach updates
 	return reportsData.map(row => {
@@ -229,12 +118,13 @@ export async function fetchReportsFromDatabase(): Promise<Report[]> {
 	});
 }
 
-export async function insertReportIntoDatabase(report: Report): Promise<Report> {
+export async function insertReportIntoDatabase(report: Report, client?: SupabaseClient): Promise<Report> {
 	console.log('[Database] Inserting report into Supabase:', report.id);
 	const payload = serializeReport(report);
 	console.log('[Database] Serialized payload:', JSON.stringify(payload, null, 2));
+	const db = resolveClient(client);
 	
-	const { data, error } = await supabase.from('reports').insert(payload).select(REPORT_SELECT).single();
+	const { data, error } = await db.from('reports').insert(payload).select(REPORT_SELECT).single();
 
 	if (error) {
 		console.error('[Database] Error inserting report:', error);
@@ -253,7 +143,7 @@ export async function insertReportIntoDatabase(report: Report): Promise<Report> 
 	if (report.updates && report.updates.length > 0) {
 		const initialUpdate = report.updates[0];
 		try {
-			await supabase.from('report_updates').insert({
+			await db.from('report_updates').insert({
 				report_id: report.id,
 				comment: initialUpdate.note,
 				created_at: new Date(`${initialUpdate.date}T${initialUpdate.time}`).toISOString()
@@ -268,14 +158,19 @@ export async function insertReportIntoDatabase(report: Report): Promise<Report> 
 	return mapRowToReport(data);
 }
 
-export async function updateReportInDatabase(id: string, updates: Partial<Report>): Promise<Report | null> {
+export async function updateReportInDatabase(
+	id: string,
+	updates: Partial<Report>,
+	client?: SupabaseClient
+): Promise<Report | null> {
+	const db = resolveClient(client);
 	const payload = serializePartial(updates);
 	if (Object.keys(payload).length === 0) {
-		const { data } = await supabase.from('reports').select(REPORT_SELECT).eq('id', id).maybeSingle();
+		const { data } = await db.from('reports').select(REPORT_SELECT).eq('id', id).maybeSingle();
 		return data ? mapRowToReport(data) : null;
 	}
 
-	const { data, error } = await supabase
+	const { data, error } = await db
 		.from('reports')
 		.update(payload)
 		.eq('id', id)
@@ -289,8 +184,9 @@ export async function updateReportInDatabase(id: string, updates: Partial<Report
 	return data ? mapRowToReport(data) : null;
 }
 
-export async function deleteReportFromDatabase(id: string): Promise<boolean> {
-	const { data, error } = await supabase.from('reports').delete().eq('id', id).select('id').maybeSingle();
+export async function deleteReportFromDatabase(id: string, client?: SupabaseClient): Promise<boolean> {
+	const db = resolveClient(client);
+	const { data, error } = await db.from('reports').delete().eq('id', id).select('id').maybeSingle();
 
 	if (error) {
 		throw new Error(error.message);

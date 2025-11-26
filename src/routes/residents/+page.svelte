@@ -3,7 +3,7 @@
   import PageTransition from '$lib/components/PageTransition.svelte';
   import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
-  import type { Report } from '$lib/server/reportsStore';
+  import type { Report } from '$lib/types/report';
   import { generateId } from '$lib/utils/id';
   import {
     buildResidentMetadata,
@@ -11,6 +11,7 @@
     serializeMediaAttachment,
     summarizeMediaAttachment
   } from '$lib/utils/reportParsing';
+  import { supabase } from '$lib/supabaseClient';
 
   let name = '';
   let address = '';
@@ -121,6 +122,19 @@
     });
   }
 
+  async function authorizedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    const headers = new Headers(init.headers ?? {});
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(input, {
+      ...init,
+      headers
+    });
+  }
+
   onMount(() => {
     // Real-time date/time
     nowTimerId = window.setInterval(() => {
@@ -207,7 +221,7 @@
         reporterId: currentUser.id
       };
 
-      const response = await fetch('/api/reports', {
+      const response = await authorizedFetch('/api/reports', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
@@ -259,7 +273,7 @@
     myReportsLoading = true;
     myReportsError = '';
     try {
-      const response = await fetch(`/api/reports?reporterId=${encodeURIComponent(userId)}`);
+      const response = await authorizedFetch(`/api/reports?reporterId=${encodeURIComponent(userId)}`);
       if (!response.ok) {
         throw new Error('Failed to load reports');
       }

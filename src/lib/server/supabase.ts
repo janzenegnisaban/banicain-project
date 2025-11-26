@@ -1,10 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 
 const supabaseUrl = env.SUPABASE_URL ?? env.PUBLIC_SUPABASE_URL;
 // Prefer service role key for server-side operations (bypasses RLS)
 // Fall back to anon key only if service role is not available
 const supabaseKey = env.SUPABASE_KEY ?? env.PUBLIC_SUPABASE_ANON_KEY;
+const publicAnonKey = env.PUBLIC_SUPABASE_ANON_KEY;
 const isServiceRole = Boolean(env.SUPABASE_KEY);
 
 if (!supabaseUrl) {
@@ -29,4 +30,29 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 	}
 });
 
+export function getSupabaseClientForRequest(authHeader?: string): SupabaseClient {
+	if (!authHeader || isServiceRole) {
+		return supabase;
+	}
 
+	if (!publicAnonKey) {
+		console.warn(
+			'[Supabase] Authorization header provided but PUBLIC_SUPABASE_ANON_KEY is missing. Falling back to default server client.'
+		);
+		return supabase;
+	}
+
+	return createClient(supabaseUrl, publicAnonKey, {
+		global: {
+			headers: {
+				Authorization: authHeader
+			}
+		},
+		auth: {
+			autoRefreshToken: false,
+			persistSession: false
+		}
+	});
+}
+
+export { isServiceRole };

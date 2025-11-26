@@ -6,34 +6,18 @@
   import { parseEvidenceEntries, parseResidentMetadata, buildResidentMetadata, createMediaAttachmentPayload, serializeMediaAttachment, summarizeMediaAttachment } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
   import { jsPDF } from 'jspdf';
+  import type { Report, ReportUpdate } from '$lib/types/report';
   
-  type ReportUpdate = {
-    date: string;
-    time: string;
-    note: string;
+  export let data: {
+    reports: Report[];
+    source: 'supabase' | 'api';
+    error?: string;
   };
 
-  type Report = {
-    id: string;
-    title: string;
-    type: string;
-    status: 'Open' | 'Under Investigation' | 'Solved';
-    priority: 'Low' | 'Medium' | 'High' | 'Critical';
-    location: string;
-    date: string;
-    time: string;
-    officer: string;
-    description: string;
-    evidence: string[];
-    suspects: string[];
-    victims: string[] | string;
-    damage: string;
-    notes: string;
-    updates: ReportUpdate[];
-  };
+  let crimeReports: Report[] = [];
 
   // Sample crime reports data
-  let crimeReports: Report[] = [
+  const defaultCrimeReports: Report[] = [
     {
       id: 'CR-2024-001',
       title: 'Armed Robbery at Central Bank',
@@ -212,6 +196,8 @@
     }
   ];
 
+  crimeReports = data?.reports?.length ? data.reports : defaultCrimeReports;
+
   // Filter states
   let statusFilter = 'All';
   let priorityFilter = 'All';
@@ -226,6 +212,7 @@
   let reportToDelete: Report | null = null;
   let editingReport: Report | null = null;
   let es: EventSource | null = null;
+  let streamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedEvidence: EvidenceBuckets = { media: [], text: [] };
   let selectedResidentDetails: ResidentMetadataResult | null = null;
   type ReportViewModel = {
@@ -413,7 +400,7 @@
     // Create a fake input event to reuse the existing handler
     const fakeInput = {
       target: { files } as HTMLInputElement
-    } as Event;
+    } as unknown as Event;
     handleResidentFileUpload(fakeInput);
   }
 
@@ -554,57 +541,88 @@
     }
   }
 
-  onMount(() => {
-    const loadReports = async () => {
-      try {
-        const res = await fetch('/api/reports');
-        const data: { reports?: Report[] } = await res.json();
-        if (data?.reports) {
-          const incomingIds = new Set(data.reports.map(report => report.id));
-          crimeReports = [...data.reports, ...crimeReports.filter(r => !incomingIds.has(r.id))];
-        }
-      } catch {
-        // ignore fetch errors for now
+  async function hydrateReportsFromApi() {
+    try {
+      const res = await fetch('/api/reports');
+      const data: { reports?: Report[] } = await res.json();
+      if (data?.reports) {
+        const incomingIds = new Set(data.reports.map(report => report.id));
+        crimeReports = [...data.reports, ...crimeReports.filter(r => !incomingIds.has(r.id))];
       }
+    } catch {
+      // ignore fetch errors for now
+    }
+  }
 
-      try {
-        es = new EventSource('/api/reports/stream');
-        es.onmessage = (evt: MessageEvent) => {
-          try {
-            const payload = JSON.parse(evt.data);
-            if (payload?.type === 'init' && payload.reports) {
-              crimeReports = payload.reports;
-            } else if (payload?.type === 'created' && payload.report) {
-              upsertReport(payload.report);
-            } else if (payload?.type === 'updated' && payload.report) {
-              upsertReport(payload.report);
-              if (showReportModal && selectedReport?.id === payload.report.id) {
-                selectedReport = payload.report;
-              }
-              if (showEditModal && editingReport?.id === payload.report.id) {
-                editingReport = payload.report;
-              }
-            } else if (payload?.type === 'deleted' && payload.id) {
-              crimeReports = crimeReports.filter(r => r.id !== payload.id);
-              if (showReportModal && selectedReport?.id === payload.id) {
-                closeReportModal();
-              }
-              if (showEditModal && editingReport?.id === payload.id) {
-                closeEditModal();
-              }
+  function connectReportStream() {
+    if (typeof window === 'undefined') return;
+
+    if (streamReconnectTimer) {
+      clearTimeout(streamReconnectTimer);
+      streamReconnectTimer = null;
+    }
+
+    if (es) {
+      es.close();
+      es = null;
+    }
+
+    try {
+      es = new EventSource('/api/reports/stream');
+      es.onmessage = (evt: MessageEvent) => {
+        try {
+          const payload = JSON.parse(evt.data);
+          if (payload?.type === 'init' && payload.reports) {
+            crimeReports = payload.reports;
+          } else if (payload?.type === 'created' && payload.report) {
+            upsertReport(payload.report);
+          } else if (payload?.type === 'updated' && payload.report) {
+            upsertReport(payload.report);
+            if (showReportModal && selectedReport?.id === payload.report.id) {
+              selectedReport = payload.report;
             }
-          } catch {
-            // swallow malformed payloads
+            if (showEditModal && editingReport?.id === payload.report.id) {
+              editingReport = payload.report;
+            }
+          } else if (payload?.type === 'deleted' && payload.id) {
+            crimeReports = crimeReports.filter(r => r.id !== payload.id);
+            if (showReportModal && selectedReport?.id === payload.id) {
+              closeReportModal();
+            }
+            if (showEditModal && editingReport?.id === payload.id) {
+              closeEditModal();
+            }
           }
-        };
-      } catch {
-        // SSE connection failed
-      }
-    };
+        } catch {
+          // swallow malformed payloads
+        }
+      };
+      es.onerror = () => {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        streamReconnectTimer = setTimeout(() => {
+          connectReportStream();
+        }, 3000);
+      };
+    } catch {
+      // SSE connection failed
+    }
+  }
 
-    loadReports();
+  onMount(() => {
+    if (data?.source !== 'supabase' || crimeReports.length === 0) {
+      hydrateReportsFromApi();
+    }
+
+    connectReportStream();
 
     return () => {
+      if (streamReconnectTimer) {
+        clearTimeout(streamReconnectTimer);
+        streamReconnectTimer = null;
+      }
       if (es) {
         es.close();
         es = null;
@@ -855,6 +873,7 @@
 
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
+      const baseFont = pdf.getFont().fontName || 'helvetica';
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 15;
@@ -872,12 +891,12 @@
 
       // Title
       pdf.setFontSize(20);
-      pdf.setFont(undefined, 'bold');
+      pdf.setFont(baseFont, 'bold');
       pdf.text('Crime Reports Export', margin, yPos);
       yPos += lineHeight * 2;
 
       pdf.setFontSize(10);
-      pdf.setFont(undefined, 'normal');
+      pdf.setFont(baseFont, 'normal');
       pdf.text(`Generated: ${new Date().toLocaleString()}`, margin, yPos);
       pdf.text(`Total Reports: ${filteredReports.length}`, margin + 80, yPos);
       yPos += lineHeight * 2;
@@ -891,12 +910,12 @@
 
         // Report header
         pdf.setFontSize(14);
-        pdf.setFont(undefined, 'bold');
+        pdf.setFont(baseFont, 'bold');
         pdf.text(`${report.id} - ${report.title}`, margin, yPos);
         yPos += lineHeight;
 
         pdf.setFontSize(10);
-        pdf.setFont(undefined, 'normal');
+        pdf.setFont(baseFont, 'normal');
         
         // Basic info
         pdf.text(`Type: ${report.type}`, margin, yPos);
@@ -912,10 +931,10 @@
         yPos += lineHeight * 1.5;
 
         // Description
-        pdf.setFont(undefined, 'bold');
+        pdf.setFont(baseFont, 'bold');
         pdf.text('Description:', margin, yPos);
         yPos += lineHeight;
-        pdf.setFont(undefined, 'normal');
+        pdf.setFont(baseFont, 'normal');
         const descLines = pdf.splitTextToSize(report.description || 'N/A', maxWidth);
         pdf.text(descLines, margin, yPos);
         yPos += lineHeight * descLines.length + 2;
@@ -923,10 +942,10 @@
         // Suspects
         if (report.suspects && report.suspects.length > 0) {
           checkNewPage(lineHeight * 3);
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Suspects:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           report.suspects.forEach(suspect => {
             pdf.text(`• ${suspect}`, margin + 5, yPos);
             yPos += lineHeight;
@@ -938,10 +957,10 @@
         const victimsArray = Array.isArray(report.victims) ? report.victims : [report.victims];
         if (victimsArray.length > 0 && victimsArray[0]) {
           checkNewPage(lineHeight * 3);
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Victims:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           victimsArray.forEach(victim => {
             pdf.text(`• ${victim}`, margin + 5, yPos);
             yPos += lineHeight;
@@ -952,10 +971,10 @@
         // Evidence
         if (evidence.text.length > 0) {
           checkNewPage(lineHeight * (evidence.text.length + 2));
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Evidence:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           evidence.text.forEach(ev => {
             pdf.text(`• ${ev}`, margin + 5, yPos);
             yPos += lineHeight;
@@ -965,7 +984,7 @@
 
         // Media evidence - add images
         if (evidence.media.length > 0) {
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Media Evidence:', margin, yPos);
           yPos += lineHeight;
           
@@ -1037,10 +1056,10 @@
         // Damage
         if (report.damage) {
           checkNewPage(lineHeight * 2);
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Damage:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           pdf.text(report.damage, margin + 5, yPos);
           yPos += lineHeight * 1.5;
         }
@@ -1048,10 +1067,10 @@
         // Updates
         if (report.updates && report.updates.length > 0) {
           checkNewPage(lineHeight * (report.updates.length * 2 + 2));
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Case Updates:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           report.updates.forEach(update => {
             pdf.text(`${update.date} ${update.time}: ${update.note}`, margin + 5, yPos);
             yPos += lineHeight;
@@ -1062,10 +1081,10 @@
         // Notes
         if (report.notes) {
           checkNewPage(lineHeight * 3);
-          pdf.setFont(undefined, 'bold');
+          pdf.setFont(baseFont, 'bold');
           pdf.text('Notes:', margin, yPos);
           yPos += lineHeight;
-          pdf.setFont(undefined, 'normal');
+          pdf.setFont(baseFont, 'normal');
           const notesLines = pdf.splitTextToSize(report.notes, maxWidth);
           pdf.text(notesLines, margin + 5, yPos);
           yPos += lineHeight * notesLines.length;
@@ -2115,6 +2134,8 @@
             </label>
             <div 
               class="border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 {isDragging ? 'border-emerald-500 bg-emerald-50 border-solid' : 'border-gray-300 bg-gray-50 hover:border-emerald-400 hover:bg-gray-100'}"
+              role="region"
+              aria-label="Resident attachments dropzone"
               on:dragover={handleDragOver}
               on:dragleave={handleDragLeave}
               on:drop={handleDrop}

@@ -1,24 +1,5 @@
 // Simple in-memory reports store with SSE broadcasting (dev/demo only)
-type ReportStatus = 'Open' | 'Under Investigation' | 'Solved';
-export type Report = {
-	id: string;
-	title: string;
-	type: string;
-	status: ReportStatus;
-	priority: 'Low' | 'Medium' | 'High' | 'Critical';
-	location: string;
-	date: string;
-	time: string;
-	officer: string;
-	description: string;
-	evidence: string[];
-	suspects: string[];
-	victims: string[] | string;
-	damage: string;
-	notes: string;
-	updates: Array<{ date: string; time: string; note: string }>;
-	reporterId?: string | null;
-};
+import type { Report, ReportPriority, ReportStatus } from '$lib/types/report';
 
 let reports: Report[] = [];
 
@@ -162,7 +143,7 @@ export function seedIfEmpty() {
 	const types = ['Theft', 'Assault', 'Fraud', 'Vandalism', 'Burglary', 'Traffic Incident', 'Noise Complaint', 'Suspicious Activity'];
 	const officers = ['Officer Smith', 'Officer Johnson', 'Officer Brown', 'Officer Davis', 'Officer Wilson', 'Unassigned'];
 	const statuses: ReportStatus[] = ['Open', 'Under Investigation', 'Solved'];
-	const priorities: Report['priority'][] = ['Low', 'Medium', 'High', 'Critical'];
+	const priorities: ReportPriority[] = ['Low', 'Medium', 'High', 'Critical'];
 	
 	// Create 15 diverse reports
 	for (let i = 0; i < 15; i++) {

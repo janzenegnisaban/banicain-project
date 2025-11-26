@@ -6,29 +6,17 @@
   import { goto } from '$app/navigation';
   import { parseEvidenceEntries, parseResidentMetadata } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
+  import type { Report } from '$lib/types/report';
   
-  type Report = {
-    id: string;
-    title: string;
-    type: string;
-    status: 'Open' | 'Under Investigation' | 'Solved';
-    priority: string;
-    location: string;
-    date: string;
-    time: string;
-    officer: string;
-    description: string;
-    updates: Array<{ date: string; time: string; note: string }>;
-    evidence?: string[];
-    suspects?: string[];
-    victims?: string[] | string;
-    damage?: string;
-    notes?: string;
+  export let data: {
+    reports: Report[];
+    source: 'supabase' | 'api';
+    error?: string;
   };
   
   let currentUser: { username: string; role: string; isAuthenticated: boolean } | null = null;
-  let reports: Report[] = [];
-  let isLoading = true;
+  let reports: Report[] = data?.reports ?? [];
+  let isLoading = reports.length === 0;
   let eventSource: EventSource | null = null;
   let activeTab = 'overview';
   let showCreateModal = false;
@@ -105,8 +93,12 @@
       return;
     }
     
-    // Fetch initial reports
-    fetchReports();
+    // Fetch initial reports if load data was empty
+    if (reports.length === 0) {
+      fetchReports();
+    } else {
+      isLoading = false;
+    }
     
     // Connect to realtime stream
     connectRealtime();
