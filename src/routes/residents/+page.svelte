@@ -18,6 +18,7 @@
   let contacts = '';
   let notes = '';
   let typeOfReport = '';
+  let otherType = '';
   let attachments: File[] = [];
   let previewUrls: string[] = [];
   let isSubmitting = false;
@@ -34,12 +35,14 @@
   let myReportsLoading = false;
   let myReportsError = '';
   let myReportsStream: EventSource | null = null;
+  let addressError = '';
+  let contactError = '';
 
   const reportTypes = [
-    'Theft', 
-    'Fraud', 
-    'Violence', 
-    'Burglary', 
+    'Theft',
+    'Fraud',
+    'Violence',
+    'Burglary',
     'Vandalism',
     'Accident',
     'Fire Related',
@@ -52,7 +55,8 @@
     'Drug Related',
     'Medical Emergency',
     'Animal Control',
-    'Environmental Issue'
+    'Environmental Issue',
+    'Other (not listed)'
   ];
 
   function handleFilesSelected(event: Event) {
@@ -73,8 +77,11 @@
     name = '';
     address = '';
     contacts = '';
+    addressError = '';
+    contactError = '';
     notes = '';
     typeOfReport = '';
+    otherType = '';
     attachments = [];
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     previewUrls = [];
@@ -135,6 +142,16 @@
     });
   }
 
+  function isValidBanicainAddress(address: string): boolean {
+    const normalized = address.toLowerCase();
+    return normalized.includes('banicain') && normalized.includes('olongapo');
+  }
+
+  function isValidPhilippineMobileNumber(value: string): boolean {
+    const cleaned = value.replace(/[\s\-]/g, '');
+    return /^09\d{9}$/.test(cleaned) || /^\+639\d{9}$/.test(cleaned);
+  }
+
   onMount(() => {
     // Real-time date/time
     nowTimerId = window.setInterval(() => {
@@ -180,6 +197,18 @@
       return;
     }
     submitError = '';
+    addressError = '';
+    contactError = '';
+
+    if (!isValidBanicainAddress(address)) {
+      addressError = 'Please enter an address located in Barangay Banicain, Olongapo City.';
+      return;
+    }
+
+    if (!isValidPhilippineMobileNumber(contacts)) {
+      contactError = 'Please enter a valid Philippine mobile number (e.g. 09XXXXXXXXX or +639XXXXXXXXX).';
+      return;
+    }
     isSubmitting = true;
 
     try {
@@ -208,10 +237,10 @@
       });
 
       const payload = {
-        title: typeOfReport
-          ? `${typeOfReport} - ${name || 'Resident'}`
+        title: (typeOfReport === 'Other (not listed)' ? otherType : typeOfReport)
+          ? `${typeOfReport === 'Other (not listed)' ? otherType : typeOfReport} - ${name || 'Resident'}`
           : `Community Report - ${name || 'Resident'}`,
-        type: typeOfReport || 'Incident',
+        type: typeOfReport === 'Other (not listed)' ? otherType || 'Incident' : typeOfReport || 'Incident',
         priority: 'High',
         location: address || 'Resident provided location',
         description: notes || 'Resident-submitted incident report.',
@@ -395,19 +424,40 @@
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Address</label>
             <input type="text" bind:value={address} placeholder="Your address" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            {#if addressError}
+              <p class="mt-1 text-xs text-red-600">{addressError}</p>
+            {:else}
+              <p class="mt-1 text-xs text-gray-500">Must be within Brgy. Banicain, Olongapo City, Zambales.</p>
+            {/if}
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Contacts</label>
             <input type="text" bind:value={contacts} placeholder="Phone or email" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            {#if contactError}
+              <p class="mt-1 text-xs text-red-600">{contactError}</p>
+            {:else}
+              <p class="mt-1 text-xs text-gray-500">For mobile, use 09XXXXXXXXX or +639XXXXXXXXX.</p>
+            {/if}
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Type of Report</label>
-            <select bind:value={typeOfReport} class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+            <select
+              bind:value={typeOfReport}
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            >
               <option value="" disabled selected>Select type</option>
               {#each reportTypes as t}
                 <option value={t}>{t}</option>
               {/each}
             </select>
+            {#if typeOfReport === 'Other (not listed)'}
+              <input
+                type="text"
+                bind:value={otherType}
+                placeholder="Describe the type of incident"
+                class="mt-3 w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            {/if}
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
@@ -421,9 +471,8 @@
           <div class="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50">
             <input 
               type="file" 
-              multiple 
-              accept="image/*,video/*" 
-              capture="environment"
+              multiple
+              accept="image/*,video/*"
               on:change={handleFilesSelected} 
               class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" 
             />
@@ -447,7 +496,19 @@
 
         <div class="mt-8 flex items-center justify-end space-x-3">
           <button type="button" class="px-5 py-3 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50" on:click={() => { resetForm(); submissionSummary = null; }}>Clear</button>
-          <button type="button" class="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg disabled:opacity-60" on:click={submitReport} disabled={isSubmitting || !name || !address || !contacts || !typeOfReport}>
+          <button
+            type="button"
+            class="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg disabled:opacity-60"
+            on:click={submitReport}
+            disabled={
+              isSubmitting ||
+              !name ||
+              !address ||
+              !contacts ||
+              !typeOfReport ||
+              (typeOfReport === 'Other (not listed)' && !otherType)
+            }
+          >
             {#if isSubmitting}
               Sending secure report...
             {:else}

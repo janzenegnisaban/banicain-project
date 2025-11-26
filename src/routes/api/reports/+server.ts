@@ -169,6 +169,17 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 	}
 
 	if (updated) {
+		// Persist history entry so residents can see case progress
+		try {
+			await dbClient.from('report_updates').insert({
+				report_id: updated.id,
+				comment: historyEntry.note,
+				created_at: new Date(`${historyEntry.date}T${historyEntry.time}`).toISOString()
+			});
+		} catch (historyError) {
+			console.error('[API] Failed to insert report update history (non-fatal):', historyError);
+		}
+
 		upsertReportSnapshot(updated, { broadcastType: 'updated' });
 		return new Response(JSON.stringify({ report: updated }), {
 			headers: { 'content-type': 'application/json' }
