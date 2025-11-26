@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { supabase } from '$lib/server/supabase';
+import { supabase, isServiceRole } from '$lib/server/supabase';
 
 type User = {
   id: string;
@@ -67,23 +67,34 @@ export const POST: RequestHandler = async ({ request }) => {
     let authUserId: string | null = null;
 
     // If password is provided, create auth user (admin creating account)
+    // Only attempt if we have service role key (admin privileges)
     if (password && password.length >= 8) {
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: email.toLowerCase().trim(),
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: full_name || username,
-          role: role || 'Resident'
+      if (!isServiceRole) {
+        console.warn('Service role key not available. Creating user in public.users without auth account.');
+        // Continue without auth user creation - will create user profile only
+      } else {
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: email.toLowerCase().trim(),
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: full_name || username,
+            role: role || 'Resident'
+          }
+        });
+
+        if (authError) {
+          console.error('Error creating auth user:', authError);
+          // If it's a permissions error, continue without auth user
+          if (authError.message?.includes('not allowed') || authError.code === 'not_admin') {
+            console.warn('Admin privileges not available. Creating user profile without auth account.');
+          } else {
+            return json({ error: `Failed to create auth account: ${authError.message}` }, { status: 500 });
+          }
+        } else {
+          authUserId = authData?.user?.id ?? null;
         }
-      });
-
-      if (authError) {
-        console.error('Error creating auth user:', authError);
-        return json({ error: `Failed to create auth account: ${authError.message}` }, { status: 500 });
       }
-
-      authUserId = authData?.user?.id ?? null;
     }
 
     // Insert user profile (use auth user ID if created, otherwise generate new UUID)

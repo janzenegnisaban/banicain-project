@@ -8,19 +8,13 @@
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
-	let role = 'Resident';
 	let acceptTerms = false;
 	let errorMessage = '';
 	let successMessage = '';
 	let isSubmitting = false;
 
-	const availableRoles = [
-		{ value: 'Resident', label: 'Resident', description: 'Submit reports and track cases' },
-		{ value: 'Police Officer', label: 'Police Officer', description: 'Manage and investigate reports' },
-		{ value: 'Crime Analyst', label: 'Crime Analyst', description: 'Analyze crime patterns and data' },
-		{ value: 'Police Chief', label: 'Police Chief', description: 'Oversee operations and personnel' },
-		{ value: 'Administrator', label: 'Administrator', description: 'Full system access and management' }
-	];
+	// All new accounts are automatically set to Resident
+	const role = 'Resident';
 
 	const passwordTips = [
 		'Use at least 8 characters',
@@ -83,7 +77,7 @@
 				id: userId,
 				email: trimmedEmail,
 				full_name: trimmedName,
-				role: role,
+				role: 'Resident', // All new accounts are automatically residents
 				is_active: true
 			});
 
@@ -96,11 +90,10 @@
 			email = '';
 			password = '';
 			confirmPassword = '';
-			role = 'Resident';
 			acceptTerms = false;
 
-			const isOfficer = ['Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator'].includes(role);
-			setTimeout(() => goto(isOfficer ? '/login?role=officer' : '/login?role=resident'), 2000);
+			// Always redirect to resident login
+			setTimeout(() => goto('/login?role=resident'), 2000);
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to create your account.';
 		} finally {
@@ -123,8 +116,8 @@
 						<a href="/" class="inline-flex items-center justify-center">
 							<img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-16 h-16 md:w-20 md:h-20 hover:scale-105 transition-transform" />
 						</a>
-						<h1 class="mt-4 text-3xl font-bold text-gray-900">Register</h1>
-						<p class="text-gray-600">Create a new account to get started</p>
+						<h1 class="mt-4 text-3xl font-bold text-gray-900">Register as Resident</h1>
+						<p class="text-gray-600">Create a resident account to submit and track reports</p>
 					</div>
 
 					<div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -209,24 +202,10 @@
 							/>
 						</div>
 
-						<div>
-							<label class="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
-							<select
-								class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-								bind:value={role}
-							>
-								{#each availableRoles as r}
-									<option value={r.value}>{r.label} - {r.description}</option>
-								{/each}
-							</select>
-							<p class="mt-1 text-xs text-gray-500">
-								{#if role === 'Administrator'}
-									⚠️ Administrator accounts have full system access. Use responsibly.
-								{:else if ['Police Officer', 'Crime Analyst', 'Police Chief'].includes(role)}
-									Officer accounts can access the dashboard to manage reports.
-								{:else}
-									Resident accounts can submit and track incident reports.
-								{/if}
+						<div class="bg-blue-50 border border-blue-200 rounded-xl p-3">
+							<p class="text-xs text-blue-700">
+								ℹ️ All new accounts are automatically created as <strong>Resident</strong> accounts. 
+								Resident accounts can submit and track incident reports.
 							</p>
 						</div>
 

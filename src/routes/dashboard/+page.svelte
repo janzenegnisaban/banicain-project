@@ -4,9 +4,11 @@
   import Sidebar from '$lib/components/Sidebar.svelte';
   import PageTransition from '$lib/components/PageTransition.svelte';
   import { goto } from '$app/navigation';
+  import { sidebarCollapsed } from '$lib/stores/sidebar';
   import { parseEvidenceEntries, parseResidentMetadata } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
   import type { Report } from '$lib/types/report';
+  
   
   export let data: {
     reports: Report[];
@@ -64,8 +66,31 @@
     victims: [] as string[]
   };
   
+  // File upload for edit form
+  let editAttachments: File[] = [];
+  let editPreviewUrls: string[] = [];
+  let editExistingEvidence: EvidenceBuckets = { media: [], text: [] };
+  
   // Official roles that can access dashboard
   const officialRoles = ['Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
+  
+  // Team management state
+  let showAddTeamMemberModal = false;
+  let showViewAllMembersModal = false;
+  let teamMembers: Array<{ id: string; username: string; email?: string; full_name?: string; role: string; is_active?: boolean; created_at?: string }> = [];
+  let isLoadingTeamMembers = false;
+  let isSavingTeamMember = false;
+  
+  // Team member form
+  let teamMemberForm = {
+    username: '',
+    email: '',
+    full_name: '',
+    role: 'Police Officer',
+    password: ''
+  };
+  
+  const officialRoleOptions = ['Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator'];
   
   // Check user role - only officials can access
   onMount(() => {
@@ -102,6 +127,9 @@
     
     // Connect to realtime stream
     connectRealtime();
+    
+    // Initialize mock team members
+    initializeMockTeamMembers();
   });
   
   onDestroy(() => {
@@ -296,6 +324,12 @@
       suspects: Array.isArray(report.suspects) ? [...report.suspects] : [],
       victims: Array.isArray(report.victims) ? report.victims : (typeof report.victims === 'string' ? [report.victims] : [])
     };
+    // Parse existing evidence for display
+    editExistingEvidence = parseEvidenceEntries(report.evidence ?? []);
+    // Clear previous attachments
+    editAttachments = [];
+    editPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    editPreviewUrls = [];
     showEditModal = true;
   }
   
@@ -316,17 +350,61 @@
       suspects: [],
       victims: []
     };
+    // Clean up preview URLs
+    editPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    editAttachments = [];
+    editPreviewUrls = [];
+    editExistingEvidence = { media: [], text: [] };
+  }
+  
+  function handleEditFilesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+    const newFiles = Array.from(input.files);
+    editAttachments = [...editAttachments, ...newFiles];
+    editPreviewUrls = [...editPreviewUrls, ...newFiles.map(file => URL.createObjectURL(file))];
+  }
+  
+  function removeEditAttachment(index: number) {
+    URL.revokeObjectURL(editPreviewUrls[index]);
+    editAttachments = editAttachments.filter((_, i) => i !== index);
+    editPreviewUrls = editPreviewUrls.filter((_, i) => i !== index);
+  }
+  
+  async function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
   
   async function saveReport() {
     if (!editingReport) return;
     
     try {
+      // Process file attachments
+      const attachmentDataUrls: string[] = [];
+      for (const file of editAttachments) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const fileType = file.type.startsWith('image/') ? 'image' : 'video';
+        attachmentDataUrls.push(JSON.stringify({
+          type: fileType,
+          name: file.name,
+          url: dataUrl
+        }));
+      }
+      
+      // Combine existing evidence with new attachments
+      const updatedEvidence = [...editForm.evidence, ...attachmentDataUrls];
+      
       const response = await fetch(`/api/reports?id=${editingReport.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           ...editForm,
+          evidence: updatedEvidence,
           updateNote: 'Report details updated'
         })
       });
@@ -381,6 +459,173 @@
     }
   }
   
+  // Team Management Functions
+  function initializeMockTeamMembers() {
+    // Mock data: 3 Police Officers and 2 Crime Analysts
+    teamMembers = [
+      {
+        id: '1',
+        username: 'officer1',
+        email: 'officer1@bsafe.local',
+        full_name: 'Officer Michael Torres',
+        role: 'Police Officer',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '2',
+        username: 'officer2',
+        email: 'officer2@bsafe.local',
+        full_name: 'Officer Sarah Martinez',
+        role: 'Police Officer',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '3',
+        username: 'officer3',
+        email: 'officer3@bsafe.local',
+        full_name: 'Officer James Anderson',
+        role: 'Police Officer',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '4',
+        username: 'analyst1',
+        email: 'analyst1@bsafe.local',
+        full_name: 'Analyst Patricia Garcia',
+        role: 'Crime Analyst',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '5',
+        username: 'analyst2',
+        email: 'analyst2@bsafe.local',
+        full_name: 'Analyst Robert Chen',
+        role: 'Crime Analyst',
+        is_active: true,
+        created_at: new Date().toISOString()
+      }
+    ];
+  }
+  
+  async function fetchTeamMembers() {
+    isLoadingTeamMembers = true;
+    try {
+      const res = await fetch('/api/users');
+      const data = await res.json();
+      if (data.error) {
+        console.error('Error fetching team members:', data.error);
+        // Use mock data if API fails
+        if (teamMembers.length === 0) {
+          initializeMockTeamMembers();
+        }
+      } else {
+        // Filter to only show official roles
+        const apiMembers = data.filter((user: any) => 
+          officialRoles.includes(user.role)
+        );
+        // Merge with mock data if API returns fewer members
+        if (apiMembers.length > 0) {
+          teamMembers = apiMembers;
+        } else if (teamMembers.length === 0) {
+          initializeMockTeamMembers();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch team members:', error);
+      // Use mock data if fetch fails
+      if (teamMembers.length === 0) {
+        initializeMockTeamMembers();
+      }
+    } finally {
+      isLoadingTeamMembers = false;
+    }
+  }
+  
+  function openAddTeamMemberModal() {
+    teamMemberForm = {
+      username: '',
+      email: '',
+      full_name: '',
+      role: 'Police Officer',
+      password: ''
+    };
+    showAddTeamMemberModal = true;
+  }
+  
+  function closeAddTeamMemberModal() {
+    showAddTeamMemberModal = false;
+    teamMemberForm = {
+      username: '',
+      email: '',
+      full_name: '',
+      role: 'Police Officer',
+      password: ''
+    };
+  }
+  
+  function openViewAllMembersModal() {
+    showViewAllMembersModal = true;
+    fetchTeamMembers();
+  }
+  
+  // Fetch team members when Team tab is active
+  $: if (activeTab === 'team' && teamMembers.length === 0) {
+    fetchTeamMembers();
+  }
+  
+  function closeViewAllMembersModal() {
+    showViewAllMembersModal = false;
+  }
+  
+  async function saveTeamMember() {
+    if (isSavingTeamMember) return;
+    if (!teamMemberForm.email || !teamMemberForm.username || !teamMemberForm.password) {
+      alert('Email, username, and password are required');
+      return;
+    }
+    
+    if (teamMemberForm.password.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+    
+    isSavingTeamMember = true;
+    try {
+      const payload = {
+        username: teamMemberForm.username,
+        email: teamMemberForm.email,
+        full_name: teamMemberForm.full_name || teamMemberForm.username,
+        role: teamMemberForm.role,
+        password: teamMemberForm.password
+      };
+      
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (response.ok) {
+        const newUser = await response.json();
+        teamMembers = [...teamMembers, newUser];
+        closeAddTeamMemberModal();
+        alert('Team member created successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to create team member');
+      }
+    } catch (error) {
+      console.error('Error creating team member:', error);
+      alert('Error creating team member');
+    } finally {
+      isSavingTeamMember = false;
+    }
+  }
+  
   function addArrayItem(formType: 'create' | 'edit', arrayName: 'evidence' | 'suspects' | 'victims') {
     if (formType === 'create') {
       createForm[arrayName] = [...createForm[arrayName], ''];
@@ -410,7 +655,7 @@
   <Sidebar />
   
   <!-- Main Content Area -->
-  <div class="lg:ml-64 transition-all duration-300">
+  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'}">
     <PageTransition duration={300} delay={100}>
       <!-- Modern Header with Glassmorphism -->
       <div class="sticky top-0 z-40 mb-8">
@@ -450,9 +695,9 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
       </div>
+    </div>
+  </div>
 
       <div class="p-4 lg:p-6 space-y-6">
 
@@ -557,10 +802,9 @@
             >
               <span class="flex items-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                 </svg>
-                Settings
+                Account Info
               </span>
               {#if activeTab === 'settings'}
                 <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
@@ -787,7 +1031,24 @@
                         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <div class="text-xs text-gray-500 mb-2">Evidence Collected</div>
-                            {#if evidence.text.length}
+                            {#if evidence.media.length > 0}
+                              <div class="grid grid-cols-2 gap-2">
+                                {#each evidence.media.slice(0, 4) as media}
+                                  <div class="relative">
+                                    {#if media.type === 'image'}
+                                      <img src={media.url} alt={media.name} class="w-full h-16 object-cover rounded-lg border border-gray-200" loading="lazy" />
+                                    {:else}
+                                      <video src={media.url} class="w-full h-16 object-cover rounded-lg border border-gray-200" controls preload="metadata">
+                                        <track kind="captions" />
+                                      </video>
+                                    {/if}
+                                  </div>
+                                {/each}
+                              </div>
+                              {#if evidence.media.length > 4}
+                                <p class="text-xs text-gray-500 mt-2">+{evidence.media.length - 4} more</p>
+                              {/if}
+                            {:else if evidence.text.length}
                               <div class="flex flex-wrap gap-1">
                                 {#each evidence.text as item}
                                   <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200">
@@ -796,7 +1057,7 @@
                                 {/each}
                               </div>
                             {:else}
-                              <p class="text-sm text-gray-500 italic">No text evidence listed yet.</p>
+                              <p class="text-sm text-gray-500 italic">No evidence collected yet.</p>
                             {/if}
                           </div>
                           <div>
@@ -966,85 +1227,79 @@
           <div class="bg-white/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-white/50">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">👥 Team Management</h2>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div class="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-xl border border-emerald-200">
-                <div class="flex items-center space-x-4 mb-4">
-                  <div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
-                    <span class="text-white font-bold">A</span>
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-800">Administrator</h3>
-                    <p class="text-sm text-gray-600">System Admin</p>
-                  </div>
-                </div>
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Reports Managed:</span>
-                    <span class="font-medium">{totalReports}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Status:</span>
-                    <span class="font-medium text-emerald-600">Active</span>
-                  </div>
-                </div>
+            {#if isLoadingTeamMembers}
+              <div class="text-center py-12">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                <p class="mt-4 text-gray-600">Loading team members...</p>
               </div>
-              
-              <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
-                <div class="flex items-center space-x-4 mb-4">
-                  <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                    <span class="text-white font-bold">PO</span>
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-800">Police Officers</h3>
-                    <p class="text-sm text-gray-600">Field Operations</p>
-                  </div>
-                </div>
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Active Cases:</span>
-                    <span class="font-medium">{investigatingReports}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Status:</span>
-                    <span class="font-medium text-blue-600">Active</span>
-                  </div>
-                </div>
+            {:else if teamMembers.length === 0}
+              <div class="text-center py-12">
+                <p class="text-gray-600 mb-4">No team members found.</p>
+                <button 
+                  class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  on:click={openAddTeamMemberModal}
+                >
+                  Add Your First Team Member
+                </button>
               </div>
-              
-              <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl border border-purple-200">
-                <div class="flex items-center space-x-4 mb-4">
-                  <div class="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
-                    <span class="text-white font-bold">CA</span>
+            {:else}
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {#each teamMembers as member}
+                  {@const initials = member.full_name ? member.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : member.username.slice(0, 2).toUpperCase()}
+                  {@const isAdmin = member.role === 'Administrator'}
+                  {@const isOfficer = member.role === 'Police Officer' || member.role === 'Police Chief'}
+                  {@const isAnalyst = member.role === 'Crime Analyst'}
+                  <div class="p-6 rounded-xl border {isAdmin ? 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200' : isOfficer ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200' : 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200'}">
+                    <div class="flex items-center space-x-4 mb-4">
+                      <div class="w-12 h-12 rounded-full flex items-center justify-center {isAdmin ? 'bg-emerald-500' : isOfficer ? 'bg-blue-500' : 'bg-purple-500'}">
+                        <span class="text-white font-bold">{initials}</span>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-gray-800 truncate">{member.full_name || member.username}</h3>
+                        <p class="text-sm text-gray-600 truncate">{member.role}</p>
+                      </div>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                      {#if member.email}
+                        <div class="flex justify-between">
+                          <span class="text-gray-600">Email:</span>
+                          <span class="font-medium text-gray-800 truncate ml-2" title={member.email}>{member.email}</span>
+                        </div>
+                      {/if}
+                      <div class="flex justify-between">
+                        <span class="text-gray-600">Status:</span>
+                        {#if member.is_active !== false}
+                          <span class="font-medium {isAdmin ? 'text-emerald-600' : isOfficer ? 'text-blue-600' : 'text-purple-600'}">Active</span>
+                        {:else}
+                          <span class="font-medium text-red-600">Inactive</span>
+                        {/if}
+                      </div>
+                      {#if member.created_at}
+                        <div class="flex justify-between">
+                          <span class="text-gray-600">Joined:</span>
+                          <span class="font-medium text-gray-800">{new Date(member.created_at).toLocaleDateString()}</span>
+                        </div>
+                      {/if}
+                    </div>
                   </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-800">Crime Analysts</h3>
-                    <p class="text-sm text-gray-600">Data Analysis</p>
-                  </div>
-                </div>
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Reports Analyzed:</span>
-                    <span class="font-medium">{totalReports}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Status:</span>
-                    <span class="font-medium text-purple-600">Active</span>
-                  </div>
-                </div>
+                {/each}
               </div>
-            </div>
+            {/if}
             
-            <div class="mt-8 p-6 bg-gray-50 rounded-xl">
+            <div class="p-6 bg-gray-50 rounded-xl">
               <h3 class="font-semibold text-gray-800 mb-4">Quick Actions</h3>
               <div class="flex flex-wrap gap-3">
-                <button class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm">
+                <button 
+                  class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  on:click={openAddTeamMemberModal}
+                >
                   Add Team Member
                 </button>
-                <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                <button 
+                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  on:click={openViewAllMembersModal}
+                >
                   View All Members
-                </button>
-                <button class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm">
-                  Manage Permissions
                 </button>
               </div>
             </div>
@@ -1052,84 +1307,69 @@
         </div>
       
       {:else if activeTab === 'settings'}
-        <!-- Settings Tab -->
+        <!-- Account Info Tab -->
         <div in:fade={{ duration: 300 }}>
           <div class="bg-white/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-white/50">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">⚙️ System Settings</h2>
+            <div class="mb-8">
+              <h2 class="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2">Account Information</h2>
+              <p class="text-gray-600">View and manage your account details</p>
+            </div>
             
-            <div class="space-y-6">
-              <div class="border-b border-gray-200 pb-6">
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">General Settings</h3>
-                <div class="space-y-4">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <p class="font-medium text-gray-700">System Notifications</p>
-                      <p class="text-sm text-gray-500">Enable email and push notifications</p>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" class="sr-only peer" checked />
-                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                    </label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Profile Card -->
+              <div class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 border border-emerald-200">
+                <div class="flex items-center space-x-4 mb-6">
+                  <div class="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                    <span class="text-white text-2xl font-bold">
+                      {currentUser?.username ? currentUser.username.charAt(0).toUpperCase() : 'U'}
+                    </span>
                   </div>
-                  
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <p class="font-medium text-gray-700">Auto-assign Reports</p>
-                      <p class="text-sm text-gray-500">Automatically assign reports to available officers</p>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" class="sr-only peer" />
-                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                    </label>
+                  <div>
+                    <h3 class="text-xl font-bold text-gray-800">{currentUser?.username || 'User'}</h3>
+                    <p class="text-sm text-gray-600">{currentUser?.role || 'No role assigned'}</p>
+                  </div>
+                </div>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between p-3 bg-white/60 rounded-lg">
+                    <span class="text-sm font-medium text-gray-600">Account Status</span>
+                    <span class="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                      {currentUser?.isAuthenticated ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
                 </div>
               </div>
               
-              <div class="border-b border-gray-200 pb-6">
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">User Preferences</h3>
+              <!-- Account Details Card -->
+              <div class="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  Account Details
+                </h3>
                 <div class="space-y-4">
                   <div>
-                    <label for="default-view" class="block text-sm font-medium text-gray-700 mb-2">Default View</label>
-                    <select id="default-view" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
-                      <option>Overview</option>
-                      <option>Reports</option>
-                      <option>Analytics</option>
-                    </select>
+                    <div class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Username</div>
+                    <div class="text-base font-semibold text-gray-800 bg-gray-50 px-4 py-2 rounded-lg">
+                      {currentUser?.username || 'N/A'}
+                    </div>
                   </div>
                   
                   <div>
-                    <label for="reports-per-page" class="block text-sm font-medium text-gray-700 mb-2">Reports Per Page</label>
-                    <select id="reports-per-page" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
-                      <option>10</option>
-                      <option>25</option>
-                      <option>50</option>
-                      <option>100</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">Account Information</h3>
-                <div class="space-y-4">
-                  <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                    <input id="username" type="text" value={currentUser?.username || ''} readonly class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600" />
+                    <div class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Role</div>
+                    <div class="text-base font-semibold text-gray-800 bg-gray-50 px-4 py-2 rounded-lg">
+                      {currentUser?.role || 'N/A'}
+                    </div>
                   </div>
                   
-                  <div>
-                    <label for="role" class="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                    <input id="role" type="text" value={currentUser?.role || ''} readonly class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600" />
-                  </div>
-                  
-                  <div class="flex space-x-3 pt-4">
-                    <button class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
-                      Save Changes
-                    </button>
-                    <button class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
-                      Cancel
-                    </button>
-                  </div>
+                  {#if currentUser?.isAuthenticated !== undefined}
+                    <div>
+                      <div class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Status</div>
+                      <div class="text-base font-semibold text-gray-800 bg-gray-50 px-4 py-2 rounded-lg">
+                        {currentUser.isAuthenticated ? 'Active' : 'Inactive'}
+                      </div>
+                    </div>
+                  {/if}
                 </div>
               </div>
             </div>
@@ -1523,13 +1763,104 @@
           </div>
 
           <div>
-            <label for="edit-notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <label for="edit-notes" class="block text-sm font-medium text-gray-700 mb-2">
+              Notes
+              <span class="text-xs text-gray-500 font-normal ml-2">(Add any additional information or updates about this report)</span>
+            </label>
             <textarea 
               id="edit-notes"
               bind:value={editForm.notes}
-              rows="3"
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              rows="6"
+              placeholder="Enter notes here... Use clear, simple language that anyone can understand."
+              class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-base leading-relaxed resize-y"
             ></textarea>
+            <p class="mt-2 text-xs text-gray-500">Tip: Write in plain language. Avoid technical jargon.</p>
+          </div>
+          
+          <!-- Existing Evidence Section -->
+          {#if editExistingEvidence.media.length > 0}
+            <div>
+              <div class="block text-sm font-medium text-gray-700 mb-3">
+                Existing Evidence ({editExistingEvidence.media.length})
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                {#each editExistingEvidence.media as media, index}
+                  <div class="relative group">
+                    {#if media.type === 'image'}
+                      <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border border-gray-200" loading="lazy" />
+                    {:else}
+                      <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-200" controls preload="metadata">
+                        <track kind="captions" />
+                      </video>
+                    {/if}
+                    <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 rounded-b-lg truncate">
+                      {media.name}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          
+          <!-- File Upload Section -->
+          <div>
+            <div class="block text-sm font-medium text-gray-700 mb-2">
+              Upload New Files or Videos
+              <span class="text-xs text-gray-500 font-normal ml-2">(Add additional photos or videos related to this report)</span>
+            </div>
+            <div class="mt-2">
+              <label for="edit-file-upload" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                  <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                  </svg>
+                  <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                  <p class="text-xs text-gray-500">Images or Videos (PNG, JPG, MP4, MOV)</p>
+                </div>
+                <input 
+                  id="edit-file-upload"
+                  type="file" 
+                  accept="image/*,video/*"
+                  multiple
+                  class="hidden"
+                  on:change={handleEditFilesSelected}
+                />
+              </label>
+            </div>
+            
+            {#if editPreviewUrls.length > 0}
+              <div class="mt-4">
+                <p class="text-sm font-medium text-gray-700 mb-3">New Files Selected ({editPreviewUrls.length})</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {#each editPreviewUrls as url, index}
+                    <div class="relative group">
+                      {#if editAttachments[index].type.startsWith('image/')}
+                        <img src={url} alt={editAttachments[index].name} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-300 shadow-md" />
+                      {:else}
+                        <video src={url} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-300 shadow-md" controls preload="metadata">
+                          <track kind="captions" />
+                        </video>
+                      {/if}
+                      <button
+                        type="button"
+                        class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-colors"
+                        on:click={() => removeEditAttachment(index)}
+                        aria-label="Remove attachment"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                      <div class="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2 rounded-b-lg">
+                        <p class="truncate font-medium">{editAttachments[index].name}</p>
+                        <p class="text-xs text-gray-300">{(editAttachments[index].size / 1024).toFixed(1)} KB</p>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+                <p class="mt-2 text-xs text-emerald-600 font-medium">These files will be added when you save changes</p>
+              </div>
+            {/if}
           </div>
         </div>
 
@@ -1582,6 +1913,175 @@
             Delete
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Add Team Member Modal -->
+{#if showAddTeamMemberModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" in:fade={{ duration: 200 }}>
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
+      <div class="p-8">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-2xl font-bold text-gray-800">Add Team Member</h2>
+          <button 
+            class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close modal"
+            on:click={closeAddTeamMemberModal}
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <form on:submit|preventDefault={saveTeamMember} class="space-y-6">
+          <div>
+            <label for="team-username" class="block text-sm font-medium text-gray-700 mb-2">Username *</label>
+            <input
+              id="team-username"
+              type="text"
+              bind:value={teamMemberForm.username}
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="Enter username"
+              required
+            />
+          </div>
+          
+          <div>
+            <label for="team-email" class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+            <input
+              id="team-email"
+              type="email"
+              bind:value={teamMemberForm.email}
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="Enter email address"
+              required
+            />
+          </div>
+          
+          <div>
+            <label for="team-fullname" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+            <input
+              id="team-fullname"
+              type="text"
+              bind:value={teamMemberForm.full_name}
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="Enter full name"
+            />
+          </div>
+          
+          <div>
+            <label for="team-role" class="block text-sm font-medium text-gray-700 mb-2">Role *</label>
+            <select
+              id="team-role"
+              bind:value={teamMemberForm.role}
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              required
+            >
+              {#each officialRoleOptions as role}
+                <option value={role}>{role}</option>
+              {/each}
+            </select>
+          </div>
+          
+          <div>
+            <label for="team-password" class="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+            <input
+              id="team-password"
+              type="password"
+              bind:value={teamMemberForm.password}
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="Enter password (min 8 characters)"
+              required
+              minlength="8"
+            />
+            <p class="mt-1 text-xs text-gray-500">Password must be at least 8 characters long</p>
+          </div>
+          
+          <div class="flex space-x-3 pt-4">
+            <button
+              type="button"
+              class="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              on:click={closeAddTeamMemberModal}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="flex-1 px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSavingTeamMember}
+            >
+              {isSavingTeamMember ? 'Creating...' : 'Create Team Member'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- View All Members Modal -->
+{#if showViewAllMembersModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" in:fade={{ duration: 200 }}>
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
+      <div class="p-8">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-2xl font-bold text-gray-800">All Team Members</h2>
+          <button 
+            class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close modal"
+            on:click={closeViewAllMembersModal}
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        {#if isLoadingTeamMembers}
+          <div class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+            <p class="mt-4 text-gray-600">Loading team members...</p>
+          </div>
+        {:else if teamMembers.length === 0}
+          <div class="text-center py-12">
+            <p class="text-gray-600">No team members found.</p>
+          </div>
+        {:else}
+          <div class="space-y-4">
+            {#each teamMembers as member}
+              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                <div class="flex items-center space-x-4">
+                  <div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold text-lg">
+                      {member.full_name ? member.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : member.username.slice(0, 2).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 class="font-semibold text-gray-800">{member.full_name || member.username}</h3>
+                    <p class="text-sm text-gray-600">{member.email || 'No email'}</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                      <span class="inline-block px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                        {member.role}
+                      </span>
+                      {#if member.is_active !== false}
+                        <span class="inline-block px-2 py-1 bg-green-100 text-green-700 rounded-full ml-2">
+                          Active
+                        </span>
+                      {:else}
+                        <span class="inline-block px-2 py-1 bg-red-100 text-red-700 rounded-full ml-2">
+                          Inactive
+                        </span>
+                      {/if}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     </div>
   </div>

@@ -2,6 +2,7 @@
   import Sidebar from '$lib/components/Sidebar.svelte';
   import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
+  import { sidebarCollapsed } from '$lib/stores/sidebar';
 
   type User = {
     id: string;
@@ -223,7 +224,7 @@
 <div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
   <Sidebar />
   
-  <div class="lg:ml-64 p-4 lg:p-6">
+  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6">
     <!-- Header -->
     <div class="bg-gradient-to-r from-emerald-600 via-primary-600 to-teal-600 p-8 rounded-2xl shadow-2xl mb-8 relative overflow-hidden">
       <div class="absolute top-0 right-0 w-80 h-80 -mt-16 -mr-16 bg-emerald-400 opacity-20 rounded-full blur-3xl animate-float"></div>

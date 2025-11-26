@@ -8,25 +8,25 @@ To connect your application to Supabase, you need to set up your environment var
 2. Select your project (or create a new one)
 3. Go to **Settings** → **API**
 4. Copy the following values:
-   - **Project URL** (this is your `SUPABASE_URL`)
-   - **anon/public key** (this is your `SUPABASE_KEY` or `PUBLIC_SUPABASE_ANON_KEY`)
+   - **Project URL** (this is your `SUPABASE_URL` or `PUBLIC_SUPABASE_URL`)
+   - **anon/public key** (this is your `PUBLIC_SUPABASE_ANON_KEY` - for client-side operations)
+   - **service_role key** (this is your `SUPABASE_KEY` - for server-side admin operations)
+
+**Important:** 
+- The **anon key** is safe to expose in client-side code
+- The **service_role key** has admin privileges and should NEVER be exposed in client-side code
+- The service_role key is required for operations like creating users via `supabase.auth.admin.createUser()`
 
 ## Step 2: Create Environment File
 
 Create a `.env` file in the root of your project (same directory as `package.json`) with the following:
 
 ```env
+# Required for server-side admin operations (creating users, etc.)
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_KEY=your-anon-key-here
+SUPABASE_KEY=your-service-role-key-here
 
-# For Prisma (if using Prisma migrations)
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-ID].supabase.co:5432/postgres?pgbouncer=true
-DIRECT_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-ID].supabase.co:5432/postgres
-```
-
-**OR** if you prefer using the PUBLIC prefix:
-
-```env
+# Required for client-side operations
 PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 
@@ -34,6 +34,11 @@ PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-ID].supabase.co:5432/postgres?pgbouncer=true
 DIRECT_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-ID].supabase.co:5432/postgres
 ```
+
+**Note:** 
+- `SUPABASE_KEY` should be the **service_role key** (found in Settings → API → service_role key)
+- `PUBLIC_SUPABASE_ANON_KEY` should be the **anon/public key** (found in Settings → API → anon public key)
+- Both keys are needed: service_role for admin operations, anon key for client-side operations
 
 **Note:** 
 - Replace `[YOUR-PASSWORD]` with your Supabase database password
@@ -68,6 +73,14 @@ After creating/updating the `.env` file:
 - Verify your API key has the correct permissions
 - Check the browser console and terminal for detailed error messages
 - Make sure your database schema matches (see `supabase_mock_data.sql` for reference)
+
+### Error: "User not allowed" or "not_admin" when creating users
+- This means `SUPABASE_KEY` (service_role key) is not set or incorrect
+- Go to Supabase Dashboard → Settings → API
+- Copy the **service_role key** (not the anon key)
+- Set it as `SUPABASE_KEY` in your `.env` file
+- Restart your dev server
+- **Note:** Without the service_role key, users can still be created in `public.users` table, but they won't have auth accounts (can't log in)
 
 ### Reports not showing in database
 - Check Supabase Dashboard → Table Editor → `reports` table

@@ -2,7 +2,8 @@
   import Sidebar from '$lib/components/Sidebar.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-import type { Report } from '$lib/types/report';
+  import { sidebarCollapsed } from '$lib/stores/sidebar';
+  import type { Report } from '$lib/types/report';
   import { jsPDF } from 'jspdf';
   
   // Reports data
@@ -14,8 +15,8 @@ import type { Report } from '$lib/types/report';
   let analyticsData = {
     totalCases: 0,
     solvedRate: 0,
-    avgResponseTime: 0,
     crimeTrend: 'stable',
+    crimeTrendPercentage: 0,
     hotSpots: [] as string[],
     topCrimeTypes: [] as Array<{ type: string; count: number; percentage: number }>,
     monthlyTrends: [] as Array<{ month: string; cases: number; solved: number }>
@@ -43,8 +44,8 @@ import type { Report } from '$lib/types/report';
       analyticsData = {
         totalCases: 0,
         solvedRate: 0,
-        avgResponseTime: 0,
         crimeTrend: 'stable',
+        crimeTrendPercentage: 0,
         hotSpots: [],
         topCrimeTypes: [],
         monthlyTrends: []
@@ -55,25 +56,6 @@ import type { Report } from '$lib/types/report';
     const totalCases = reportsData.length;
     const solvedCases = reportsData.filter(r => r.status === 'Solved').length;
     const solvedRate = totalCases > 0 ? (solvedCases / totalCases) * 100 : 0;
-
-    // Calculate average response time (time from creation to status change)
-    let totalResponseTime = 0;
-    let responseTimeCount = 0;
-    reportsData.forEach(report => {
-      if (report.status === 'Solved' && report.updates && report.updates.length > 1) {
-        const createdDate = new Date(report.date + 'T' + report.time);
-        const solvedUpdate = report.updates.find(u => u.note.toLowerCase().includes('solved'));
-        if (solvedUpdate) {
-          const solvedDate = new Date(solvedUpdate.date + 'T' + solvedUpdate.time);
-          const diffHours = (solvedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
-          if (diffHours > 0) {
-            totalResponseTime += diffHours * 60; // Convert to minutes
-            responseTimeCount++;
-          }
-        }
-      }
-    });
-    const avgResponseTime = responseTimeCount > 0 ? totalResponseTime / responseTimeCount : 0;
 
     // Calculate crime trend (compare last month vs previous month)
     const now = new Date();
@@ -91,10 +73,17 @@ import type { Report } from '$lib/types/report';
     });
 
     let crimeTrend = 'stable';
-    if (lastMonthReports.length > prevMonthReports.length * 1.1) {
-      crimeTrend = 'increasing';
-    } else if (lastMonthReports.length < prevMonthReports.length * 0.9) {
-      crimeTrend = 'decreasing';
+    let crimeTrendPercentage = 0;
+    
+    if (prevMonthReports.length > 0) {
+      const change = ((lastMonthReports.length - prevMonthReports.length) / prevMonthReports.length) * 100;
+      crimeTrendPercentage = Math.abs(change);
+      
+      if (lastMonthReports.length > prevMonthReports.length * 1.1) {
+        crimeTrend = 'increasing';
+      } else if (lastMonthReports.length < prevMonthReports.length * 0.9) {
+        crimeTrend = 'decreasing';
+      }
     }
 
     // Get hot spots (most frequent locations)
@@ -155,8 +144,8 @@ import type { Report } from '$lib/types/report';
     analyticsData = {
       totalCases,
       solvedRate: Math.round(solvedRate * 10) / 10,
-      avgResponseTime: Math.round(avgResponseTime * 10) / 10,
       crimeTrend,
+      crimeTrendPercentage: Math.round(crimeTrendPercentage * 10) / 10,
       hotSpots: hotSpots.length > 0 ? hotSpots : ['No data available'],
       topCrimeTypes,
       monthlyTrends
@@ -222,23 +211,6 @@ import type { Report } from '$lib/types/report';
       });
     }
 
-    // Insight 5: Response time
-    if (analyticsData.avgResponseTime > 0) {
-      if (analyticsData.avgResponseTime < 60) {
-        insights.push({
-          type: 'success',
-          title: `Fast response time: ${analyticsData.avgResponseTime.toFixed(1)} minutes`,
-          description: 'Excellent response performance'
-        });
-      } else if (analyticsData.avgResponseTime > 120) {
-        insights.push({
-          type: 'warning',
-          title: `Response time needs improvement`,
-          description: `Current average: ${analyticsData.avgResponseTime.toFixed(1)} minutes`
-        });
-      }
-    }
-
     aiInsights = insights.slice(0, 3); // Show top 3 insights
   }
 
@@ -300,8 +272,6 @@ import type { Report } from '$lib/types/report';
       pdf.text(`Total Cases: ${analyticsData.totalCases.toLocaleString()}`, margin, yPosition);
       yPosition += lineHeight;
       pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Average Response Time: ${analyticsData.avgResponseTime > 0 ? analyticsData.avgResponseTime.toFixed(1) + ' minutes' : 'N/A'}`, margin, yPosition);
       yPosition += lineHeight;
       pdf.text(`Crime Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
       yPosition += 10;
@@ -633,8 +603,6 @@ import type { Report } from '$lib/types/report';
       yPosition += lineHeight;
       pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
       yPosition += lineHeight;
-      pdf.text(`Average Response Time: ${analyticsData.avgResponseTime > 0 ? analyticsData.avgResponseTime.toFixed(1) + ' minutes' : 'N/A'}`, margin, yPosition);
-      yPosition += lineHeight;
       pdf.text(`Crime Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
       yPosition += 10;
 
@@ -814,7 +782,7 @@ import type { Report } from '$lib/types/report';
 <div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
   <Sidebar />
   
-  <div class="lg:ml-64 p-4 lg:p-6" bind:this={analyticsContent}>
+  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6" bind:this={analyticsContent}>
     <!-- Header -->
     <div class="bg-gradient-to-r from-teal-600 via-emerald-600 to-primary-600 p-8 rounded-2xl shadow-2xl mb-8 relative overflow-hidden">
       <div class="absolute top-0 right-0 w-80 h-80 -mt-16 -mr-16 bg-teal-400 opacity-20 rounded-full blur-3xl animate-float"></div>
@@ -836,7 +804,7 @@ import type { Report } from '$lib/types/report';
     </div>
 
     <!-- Key Metrics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
       <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 100 }}>
         <div class="flex items-center justify-between mb-4">
           <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -877,31 +845,22 @@ import type { Report } from '$lib/types/report';
 
       <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 300 }}>
         <div class="flex items-center justify-between mb-4">
-          <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-          </div>
-          <span class="text-sm font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded-full">-8.1%</span>
-        </div>
-        <h3 class="text-2xl font-bold text-gray-800 mb-1">
-          {#if isLoading}
-            <span class="text-gray-400">Loading...</span>
-          {:else}
-            {analyticsData.avgResponseTime > 0 ? `${analyticsData.avgResponseTime} min` : 'N/A'}
-          {/if}
-        </h3>
-        <p class="text-gray-600 text-sm">Avg Response Time</p>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 400 }}>
-        <div class="flex items-center justify-between mb-4">
           <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
             <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
             </svg>
           </div>
-          <span class="text-sm font-medium text-orange-600 bg-orange-100 px-2 py-1 rounded-full">↓ 15.3%</span>
+          {#if !isLoading && analyticsData.crimeTrendPercentage > 0}
+            {#if analyticsData.crimeTrend === 'increasing'}
+              <span class="text-sm font-medium text-orange-600 bg-orange-100 px-2 py-1 rounded-full">↑ {analyticsData.crimeTrendPercentage}%</span>
+            {:else if analyticsData.crimeTrend === 'decreasing'}
+              <span class="text-sm font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">↓ {analyticsData.crimeTrendPercentage}%</span>
+            {:else}
+              <span class="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full">→ {analyticsData.crimeTrendPercentage}%</span>
+            {/if}
+          {:else}
+            <span class="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full">—</span>
+          {/if}
         </div>
         <h3 class="text-2xl font-bold text-gray-800 mb-1 capitalize">
           {#if isLoading}

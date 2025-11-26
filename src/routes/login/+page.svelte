@@ -236,10 +236,12 @@
           </div>
         </form>
       
-      <div class="text-center text-sm text-gray-600">
-        <span>New here?</span>
-        <a class="text-indigo-600 hover:underline ml-1" href="/signup">Create an account</a>
-      </div>
+      {#if role === 'resident'}
+        <div class="text-center text-sm text-gray-600">
+          <span>New here?</span>
+          <a class="text-indigo-600 hover:underline ml-1" href="/signup">Create an account</a>
+        </div>
+      {/if}
       
     </div>
   {/if}

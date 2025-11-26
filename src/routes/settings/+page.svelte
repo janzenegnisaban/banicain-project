@@ -1,11 +1,12 @@
 <script lang="ts">
   import Sidebar from '$lib/components/Sidebar.svelte';
+  import { sidebarCollapsed } from '$lib/stores/sidebar';
 </script>
 
 <div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
   <Sidebar />
   
-  <div class="lg:ml-64 p-4 lg:p-6">
+  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6">
     <div class="bg-white/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-white/50">
       <h1 class="text-3xl font-bold text-gray-800 mb-4">Settings</h1>
       <p class="text-gray-600 mb-6">Configure system settings and preferences.</p>

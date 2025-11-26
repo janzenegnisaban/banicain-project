@@ -410,6 +410,32 @@
     }
   }
 
+  async function handleLogout() {
+    try {
+      // Close SSE stream if open
+      if (myReportsStream) {
+        myReportsStream.close();
+        myReportsStream = null;
+      }
+
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+
+      // Clear local storage
+      localStorage.removeItem('user');
+      localStorage.removeItem(autosaveKey);
+
+      // Redirect to landing page
+      goto('/');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Still redirect even if logout fails
+      localStorage.removeItem('user');
+      localStorage.removeItem(autosaveKey);
+      goto('/');
+    }
+  }
+
 </script>
 
 <div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
@@ -425,16 +451,28 @@
             <p class="text-emerald-100">Submit a new incident report to your Barangay officials</p>
             <div class="mt-3 text-white/90 text-sm">Current: {formatDateTime(now)}</div>
           </div>
-          <button
-            on:click={() => goto('/')}
-            class="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all duration-300 hover:scale-105"
-            aria-label="Back to home"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-            </svg>
-            <span class="font-medium">Home</span>
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              on:click={() => goto('/')}
+              class="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all duration-300 hover:scale-105"
+              aria-label="Back to home"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+              </svg>
+              <span class="font-medium">Home</span>
+            </button>
+            <button
+              on:click={handleLogout}
+              class="flex items-center gap-2 px-4 py-2 bg-red-500/80 hover:bg-red-600/90 backdrop-blur-sm text-white rounded-lg transition-all duration-300 hover:scale-105"
+              aria-label="Logout"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+              </svg>
+              <span class="font-medium">Logout</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
