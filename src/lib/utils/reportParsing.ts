@@ -120,14 +120,29 @@ function asMediaAttachmentFromString(value: string): MediaAttachment | null {
 
 	try {
 		const parsed = JSON.parse(value);
-		if (parsed?.kind === RESIDENT_MEDIA_KIND && typeof parsed.dataUrl === 'string') {
-			return {
-				id: parsed.id ?? generateId('attachment'),
-				name: parsed.name ?? 'Resident Attachment',
-				type: parsed.type === 'video' ? 'video' : 'image',
-				url: parsed.dataUrl,
-				size: parsed.size
-			};
+		// Handle both formats: with 'kind' field (new format) and without (simpler format)
+		if (typeof parsed === 'object' && parsed !== null) {
+			// Check for new format with 'kind' field
+			if (parsed?.kind === RESIDENT_MEDIA_KIND && typeof parsed.dataUrl === 'string') {
+				return {
+					id: parsed.id ?? generateId('attachment'),
+					name: parsed.name ?? 'Resident Attachment',
+					type: parsed.type === 'video' ? 'video' : 'image',
+					url: parsed.dataUrl,
+					size: parsed.size
+				};
+			}
+			// Check for simpler format: {type, name, dataUrl} or {type, name, url}
+			if ((typeof parsed.dataUrl === 'string' || typeof parsed.url === 'string') && 
+			    (parsed.type === 'image' || parsed.type === 'video')) {
+				return {
+					id: parsed.id ?? generateId('attachment'),
+					name: parsed.name ?? 'Resident Attachment',
+					type: parsed.type === 'video' ? 'video' : 'image',
+					url: parsed.dataUrl || parsed.url,
+					size: parsed.size
+				};
+			}
 		}
 	} catch {
 		// not json, fall through
@@ -178,11 +193,34 @@ export function parseEvidenceEntries(evidence: string[] | undefined | null): Evi
 			buckets.text.push(String(entry));
 			continue;
 		}
+		
+		// Try to parse as media attachment
 		const media = asMediaAttachmentFromString(entry);
 		if (media) {
 			buckets.media.push(media);
 		} else {
-			buckets.text.push(entry);
+			// Only add to text if it's not a JSON string (to avoid showing raw JSON)
+			// Check if it looks like JSON but couldn't be parsed as media
+			const trimmed = entry.trim();
+			if (trimmed.startsWith('{') && trimmed.includes('"type"') && trimmed.includes('"dataUrl"')) {
+				// It's a JSON string that should have been parsed as media but wasn't
+				// Try to extract at least the name for display
+				try {
+					const parsed = JSON.parse(entry);
+					if (parsed.name) {
+						buckets.text.push(`Media: ${parsed.name}`);
+					} else {
+						// Skip malformed JSON entries
+						continue;
+					}
+				} catch {
+					// Skip invalid JSON
+					continue;
+				}
+			} else {
+				// Regular text evidence
+				buckets.text.push(entry);
+			}
 		}
 	}
 

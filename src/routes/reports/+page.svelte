@@ -245,6 +245,9 @@
   let filePreviewUrls: string[] = [];
   let isExporting = false;
   let isSaving = false;
+  let editExistingEvidence: EvidenceBuckets = { media: [], text: [] };
+  let editResidentMetadata: ResidentMetadataResult | null = null;
+  let originalNotes: string = '';
 
   // Resident submission form state
   let residentForm = {
@@ -499,17 +502,32 @@
 
   function handleFileUpload(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (!input.files) return;
+    if (!input.files || input.files.length === 0) return;
     
     const newFiles = Array.from(input.files);
-    uploadedFiles = [...uploadedFiles, ...newFiles];
     
-    // Create preview URLs
-    newFiles.forEach(file => {
-      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        filePreviewUrls.push(URL.createObjectURL(file));
-      }
-    });
+    // Filter only image and video files
+    const validFiles = newFiles.filter(file => 
+      file.type.startsWith('image/') || file.type.startsWith('video/')
+    );
+    
+    if (validFiles.length === 0) {
+      alert('Please select image or video files only.');
+      input.value = '';
+      return;
+    }
+    
+    // Create preview URLs immediately for valid files
+    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    
+    // Update arrays reactively by reassigning
+    uploadedFiles = [...uploadedFiles, ...validFiles];
+    filePreviewUrls = [...filePreviewUrls, ...newPreviewUrls];
+    
+    // Reset the input so the same file can be selected again if needed
+    input.value = '';
+    
+    console.log('Files uploaded:', validFiles.length, 'Preview URLs:', newPreviewUrls.length);
   }
 
   function removeFile(index: number) {
@@ -673,6 +691,15 @@
   function openEditModal(report: Report | null = null) {
     editingReport = report;
     if (report) {
+      // Parse notes to check if it's resident metadata
+      const parsedMetadata = parseResidentMetadata(report.notes ?? '');
+      originalNotes = report.notes || '';
+      
+      // If it's structured metadata, show the message instead of JSON
+      const displayNotes = parsedMetadata.isStructured 
+        ? (parsedMetadata.message || parsedMetadata.rawNotes || '')
+        : (report.notes || '');
+      
       editForm = {
         title: report.title || '',
         type: report.type || '',
@@ -682,13 +709,17 @@
         officer: report.officer || '',
         description: report.description || '',
         damage: report.damage || '',
-        notes: report.notes || '',
+        notes: displayNotes, // Show readable text instead of JSON
         evidence: Array.isArray(report.evidence) ? [...report.evidence] : [],
         suspects: Array.isArray(report.suspects) ? [...report.suspects] : [],
         victims: Array.isArray(report.victims) ? report.victims : (typeof report.victims === 'string' ? [report.victims] : []),
         date: report.date || new Date().toISOString().slice(0, 10),
         time: report.time || new Date().toTimeString().slice(0, 5)
       };
+      // Parse existing evidence for display
+      editExistingEvidence = parseEvidenceEntries(report.evidence ?? []);
+      // Store parsed metadata for saving
+      editResidentMetadata = parsedMetadata;
     } else {
       const now = new Date();
       editForm = {
@@ -707,8 +738,12 @@
         date: now.toISOString().slice(0, 10),
         time: now.toTimeString().slice(0, 5)
       };
+      editExistingEvidence = { media: [], text: [] };
+      editResidentMetadata = null;
+      originalNotes = '';
     }
     uploadedFiles = [];
+    filePreviewUrls.forEach(url => URL.revokeObjectURL(url));
     filePreviewUrls = [];
     showEditModal = true;
   }
@@ -720,6 +755,9 @@
     filePreviewUrls.forEach(url => URL.revokeObjectURL(url));
     uploadedFiles = [];
     filePreviewUrls = [];
+    editExistingEvidence = { media: [], text: [] };
+    editResidentMetadata = null;
+    originalNotes = '';
     editForm = {
       title: '',
       type: '',
@@ -751,7 +789,7 @@
           fileEvidence.push(JSON.stringify({
             type: file.type.startsWith('video/') ? 'video' : 'image',
             name: file.name,
-            dataUrl,
+            dataUrl,  // Use 'dataUrl' to match parser expectations
             size: file.size
           }));
         } catch (error) {
@@ -759,9 +797,30 @@
         }
       }
 
+      // Combine existing evidence (from original report) with new attachments
+      // Use the original report's evidence array, not editForm.evidence which may contain parsed data
+      const originalEvidence = editingReport && Array.isArray(editingReport.evidence) ? [...editingReport.evidence] : [];
+      const updatedEvidence = [...originalEvidence, ...fileEvidence];
+
+      // Handle notes: if it was originally resident metadata, update the message field
+      let finalNotes = editForm.notes;
+      if (editResidentMetadata?.isStructured && originalNotes) {
+        try {
+          // Parse the original JSON structure
+          const metadata = JSON.parse(originalNotes);
+          // Update only the message field, preserve the rest
+          metadata.message = editForm.notes;
+          finalNotes = JSON.stringify(metadata);
+        } catch {
+          // If parsing fails, just use the edited notes as-is
+          finalNotes = editForm.notes;
+        }
+      }
+
       const payload = {
         ...editForm,
-        evidence: [...editForm.evidence, ...fileEvidence],
+        notes: finalNotes,
+        evidence: updatedEvidence,
         date: editForm.date || new Date().toISOString().slice(0, 10),
         time: editForm.time || new Date().toTimeString().slice(0, 5),
         updateNote: editingReport ? 'Report details updated' : 'New report created'
@@ -1252,8 +1311,8 @@
           <div class="bg-gray-50 p-6 rounded-xl border border-gray-200" in:fly={{ y: -20, duration: 300 }}>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <select bind:value={statusFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+                <label for="filter-status" class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select id="filter-status" bind:value={statusFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
                   <option value="All">All Status</option>
                   <option value="Open">Open</option>
                   <option value="Under Investigation">Under Investigation</option>
@@ -1261,8 +1320,8 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                <select bind:value={priorityFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+                <label for="filter-priority" class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                <select id="filter-priority" bind:value={priorityFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
                   <option value="All">All Priorities</option>
                   <option value="Critical">Critical</option>
                   <option value="High">High</option>
@@ -1271,8 +1330,8 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Case Type</label>
-                <select bind:value={typeFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+                <label for="filter-type" class="block text-sm font-medium text-gray-700 mb-2">Case Type</label>
+                <select id="filter-type" bind:value={typeFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
                   <option value="All">All Types</option>
                   <option value="Armed Robbery">Armed Robbery</option>
                   <option value="Vehicle Theft">Vehicle Theft</option>
@@ -1366,8 +1425,28 @@
                 <!-- Evidence and Updates -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <div class="text-xs text-gray-500 mb-2">Evidence Collected</div>
-                    {#if evidence.text.length}
+                    <div class="text-xs text-gray-500 mb-2 font-medium">Evidence Collected</div>
+                    {#if evidence.media.length > 0}
+                      <div class="grid grid-cols-2 gap-2">
+                        {#each evidence.media.slice(0, 4) as media}
+                          <div class="relative group">
+                            {#if media.type === 'image'}
+                              <img src={media.url} alt={media.name} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" loading="lazy" />
+                            {:else}
+                              <video src={media.url} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" controls preload="metadata">
+                                <track kind="captions" />
+                              </video>
+                            {/if}
+                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs p-1.5 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                              <p class="truncate font-medium">{media.name}</p>
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
+                      {#if evidence.media.length > 4}
+                        <p class="text-xs text-gray-500 mt-2 font-medium">+{evidence.media.length - 4} more item{evidence.media.length - 4 > 1 ? 's' : ''}</p>
+                      {/if}
+                    {:else if evidence.text.length}
                       <div class="flex flex-wrap gap-1">
                         {#each evidence.text as item}
                           <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200">
@@ -1376,7 +1455,7 @@
                         {/each}
                       </div>
                     {:else}
-                      <p class="text-sm text-gray-500 italic">No text evidence yet.</p>
+                      <p class="text-sm text-gray-500 italic">No evidence collected yet.</p>
                     {/if}
                   </div>
                   <div>
@@ -1410,7 +1489,9 @@
                           {#if media.type === 'image'}
                             <img src={media.url} alt={media.name} class="w-full h-24 object-cover rounded-lg border border-gray-100" loading="lazy" />
                           {:else}
-                            <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-100" controls preload="metadata"></video>
+                            <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-100" controls preload="metadata">
+                              <track kind="captions" />
+                            </video>
                           {/if}
                           <div class="text-xs text-gray-600 truncate">{media.name}</div>
                         </div>
@@ -1425,6 +1506,7 @@
                 <button 
                   class="text-indigo-600 hover:text-indigo-700 p-2 rounded-lg hover:bg-indigo-50 transition-colors" 
                   title="View Details"
+                  aria-label="View Details"
                   on:click={() => viewReport(report)}
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1435,6 +1517,7 @@
                 <button 
                   class="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors" 
                   title="Edit Case"
+                  aria-label="Edit Case"
                   on:click={() => openEditModal(report)}
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1444,6 +1527,7 @@
                 <button 
                   class="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors" 
                   title="Delete Case"
+                  aria-label="Delete Case"
                   on:click={() => confirmDelete(report)}
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1504,6 +1588,7 @@
           <h2 class="text-2xl font-bold text-gray-800">{selectedReport.id} - {selectedReport.title}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close modal"
             on:click={closeReportModal}
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1597,7 +1682,9 @@
                       {#if media.type === 'image'}
                         <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border border-gray-100" loading="lazy" />
                       {:else}
-                        <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-100" controls preload="metadata"></video>
+                        <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-100" controls preload="metadata">
+                          <track kind="captions" />
+                        </video>
                       {/if}
                       <div class="text-xs text-gray-600 mt-1 truncate">{media.name}</div>
                     </div>
@@ -1648,13 +1735,19 @@
 
             <div>
               <h3 class="text-lg font-semibold text-gray-800 mb-3">Notes</h3>
-              <p class="text-gray-600 bg-gray-50 p-4 rounded-lg">
+              <div class="bg-gray-50 p-4 rounded-lg">
                 {#if selectedResidentDetails?.isStructured}
-                  {selectedResidentDetails.message || 'Resident did not include additional notes.'}
+                  {#if selectedResidentDetails.message}
+                    <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedResidentDetails.message}</p>
+                  {:else}
+                    <p class="text-gray-500 italic">Resident did not include additional notes.</p>
+                  {/if}
+                {:else if selectedReport.notes}
+                  <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedReport.notes}</p>
                 {:else}
-                  {selectedReport.notes || 'No notes available.'}
+                  <p class="text-gray-500 italic">No notes available.</p>
                 {/if}
-              </p>
+              </div>
             </div>
           </div>
         </div>
@@ -1692,6 +1785,7 @@
           <h2 class="text-2xl font-bold text-gray-800">{editingReport ? `Edit Report - ${editingReport.id}` : 'New Report'}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close edit modal"
             on:click={closeEditModal}
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1808,52 +1902,59 @@
           </div>
 
           <div>
-            <label for="edit-notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <label for="edit-notes" class="block text-sm font-medium text-gray-700 mb-2">
+              Notes
+              {#if editResidentMetadata?.isStructured}
+                <span class="text-xs text-emerald-600 font-normal ml-2">(Resident submission - editing message)</span>
+              {:else}
+                <span class="text-xs text-gray-500 font-normal ml-2">(Add any additional information or updates about this report)</span>
+              {/if}
+            </label>
             <textarea 
               id="edit-notes"
               bind:value={editForm.notes}
-              rows="3"
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              rows="6"
+              placeholder="Enter notes here... Use clear, simple language that anyone can understand."
+              class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-base leading-relaxed resize-y"
             ></textarea>
+            <p class="mt-2 text-xs text-gray-500">Tip: Write in plain language. Avoid technical jargon.</p>
           </div>
 
-          <!-- Evidence -->
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <label class="block text-sm font-medium text-gray-700">Evidence</label>
-              <button 
-                type="button"
-                class="text-sm text-emerald-600 hover:text-emerald-700"
-                on:click={() => addArrayItem('evidence')}
-              >
-                + Add Evidence
-              </button>
-            </div>
-            <div class="space-y-2">
-              {#each editForm.evidence as item, index}
-                <div class="flex gap-2">
-                  <input 
-                    type="text" 
-                    bind:value={editForm.evidence[index]}
-                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    placeholder="Evidence item"
-                  />
-                  <button 
-                    type="button"
-                    class="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    on:click={() => removeArrayItem('evidence', index)}
-                  >
-                    Remove
-                  </button>
+          <!-- Existing Evidence Section -->
+          {#if editExistingEvidence.media.length > 0}
+            <div class="mb-6">
+              <div class="flex items-center justify-between mb-3">
+                <div class="block text-sm font-medium text-gray-700">
+                  Existing Evidence ({editExistingEvidence.media.length})
                 </div>
-              {/each}
+                <span class="text-xs text-gray-500">Current attachments</span>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+                {#each editExistingEvidence.media as media, index}
+                  <div class="relative group">
+                    {#if media.type === 'image'}
+                      <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border-2 border-gray-300 shadow-sm hover:border-gray-400 transition-all" loading="lazy" />
+                    {:else}
+                      <video src={media.url} class="w-full h-32 object-cover rounded-lg border-2 border-gray-300 shadow-sm hover:border-gray-400 transition-all" controls preload="metadata">
+                        <track kind="captions" />
+                      </video>
+                    {/if}
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/70 to-transparent text-white text-xs p-2 rounded-b-lg">
+                      <p class="truncate font-medium" title={media.name}>{media.name}</p>
+                      {#if media.size}
+                        <p class="text-xs text-gray-300 mt-0.5">{(media.size / 1024).toFixed(1)} KB</p>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
             </div>
-          </div>
+          {/if}
 
           <!-- Suspects -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label class="block text-sm font-medium text-gray-700">Suspects</label>
+              <label for="suspects-list" class="block text-sm font-medium text-gray-700">Suspects</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
@@ -1862,6 +1963,7 @@
                 + Add Suspect
               </button>
             </div>
+            <div id="suspects-list">
             <div class="space-y-2">
               {#each editForm.suspects as item, index}
                 <div class="flex gap-2">
@@ -1881,12 +1983,13 @@
                 </div>
               {/each}
             </div>
+            </div>
           </div>
 
           <!-- Victims -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label class="block text-sm font-medium text-gray-700">Victims</label>
+              <label for="victims-list" class="block text-sm font-medium text-gray-700">Victims</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
@@ -1895,6 +1998,7 @@
                 + Add Victim
               </button>
             </div>
+            <div id="victims-list">
             <div class="space-y-2">
               {#each editForm.victims as item, index}
                 <div class="flex gap-2">
@@ -1914,48 +2018,93 @@
                 </div>
               {/each}
             </div>
+            </div>
           </div>
 
-          <!-- File Upload -->
+          <!-- File Upload Section -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Upload Images/Videos</label>
-            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-emerald-500 transition-colors">
-              <input
-                type="file"
-                id="file-upload"
-                accept="image/*,video/*"
-                multiple
-                on:change={handleFileUpload}
-                class="hidden"
-              />
-              <label for="file-upload" class="cursor-pointer">
-                <svg class="w-12 h-12 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                </svg>
-                <p class="text-sm text-gray-600 mb-1">Click to upload or drag and drop</p>
-                <p class="text-xs text-gray-500">Images and videos (PNG, JPG, MP4, etc.)</p>
+            <div class="block text-sm font-medium text-gray-700 mb-2">
+              Upload New Files or Videos
+              <span class="text-xs text-gray-500 font-normal ml-2">(Add additional photos or videos related to this report)</span>
+            </div>
+            <div class="mt-2">
+              <label for="file-upload" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                  <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                  </svg>
+                  <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                  <p class="text-xs text-gray-500">Images or Videos (PNG, JPG, MP4, MOV)</p>
+                </div>
+                <input
+                  type="file"
+                  id="file-upload"
+                  accept="image/*,video/*"
+                  multiple
+                  on:change={handleFileUpload}
+                  class="hidden"
+                />
               </label>
             </div>
             
+            <!-- File Previews - Show immediately after selection -->
             {#if filePreviewUrls.length > 0}
-              <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {#each filePreviewUrls as url, index}
-                  <div class="relative">
-                    {#if uploadedFiles[index]?.type.startsWith('image/')}
-                      <img src={url} alt={uploadedFiles[index]?.name} class="w-full h-32 object-cover rounded-lg border border-gray-200" />
-                    {:else if uploadedFiles[index]?.type.startsWith('video/')}
-                      <video src={url} class="w-full h-32 object-cover rounded-lg border border-gray-200" controls preload="metadata"></video>
-                    {/if}
-                    <button
-                      type="button"
-                      class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
-                      on:click={() => removeFile(index)}
-                    >
-                      ×
-                    </button>
-                    <p class="text-xs text-gray-600 mt-1 truncate">{uploadedFiles[index]?.name}</p>
-                  </div>
-                {/each}
+              <div class="mt-4" transition:fly={{ y: 10, duration: 300 }}>
+                <div class="flex items-center justify-between mb-3">
+                  <p class="text-sm font-medium text-gray-700">
+                    New Files Selected ({filePreviewUrls.length})
+                  </p>
+                  <span class="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-full">Pending</span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-emerald-50/30 rounded-lg border-2 border-emerald-200 border-dashed">
+                  {#each filePreviewUrls as url, index}
+                    <div class="relative group" transition:scale={{ duration: 200 }}>
+                      {#if uploadedFiles[index]?.type.startsWith('image/')}
+                        <img 
+                          src={url} 
+                          alt={uploadedFiles[index]?.name || 'Preview'} 
+                          class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" 
+                          loading="eager"
+                        />
+                      {:else if uploadedFiles[index]?.type.startsWith('video/')}
+                        <video 
+                          src={url} 
+                          class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" 
+                          controls 
+                          preload="metadata"
+                        >
+                          <track kind="captions" />
+                        </video>
+                      {/if}
+                      <button
+                        type="button"
+                        class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-all hover:scale-110 z-10"
+                        on:click={() => removeFile(index)}
+                        aria-label="Remove attachment"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                      <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/75 to-transparent text-white text-xs p-2 rounded-b-lg">
+                        <p class="truncate font-semibold" title={uploadedFiles[index]?.name}>{uploadedFiles[index]?.name || 'Unknown file'}</p>
+                        {#if uploadedFiles[index]?.size}
+                          <p class="text-xs text-gray-200 mt-0.5">{(uploadedFiles[index].size / 1024).toFixed(1)} KB</p>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+                <div class="mt-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-100 px-3 py-2 rounded-lg">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <p class="font-medium">These files will be added when you save changes</p>
+                </div>
+              </div>
+            {:else}
+              <div class="mt-4 text-center py-4 text-sm text-gray-500">
+                <p>No files selected. Select images or videos above to see previews.</p>
               </div>
             {/if}
           </div>
@@ -2038,6 +2187,7 @@
           </div>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close new report modal"
             on:click={closeNewReportModal}
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2127,7 +2277,7 @@
 
           <!-- File Upload -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
+            <label for="resident-file-upload" class="block text-sm font-medium text-gray-700 mb-2">
               Upload Images/Videos
               {#if residentFiles.length > 0}
                 <span class="ml-2 text-emerald-600 font-semibold">({residentFiles.length} file{residentFiles.length > 1 ? 's' : ''} selected)</span>

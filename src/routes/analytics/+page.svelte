@@ -804,7 +804,7 @@
     </div>
 
     <!-- Key Metrics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 100 }}>
         <div class="flex items-center justify-between mb-4">
           <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -841,35 +841,6 @@
           {/if}
         </h3>
         <p class="text-gray-600 text-sm">Case Resolution Rate</p>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 300 }}>
-        <div class="flex items-center justify-between mb-4">
-          <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-            <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-            </svg>
-          </div>
-          {#if !isLoading && analyticsData.crimeTrendPercentage > 0}
-            {#if analyticsData.crimeTrend === 'increasing'}
-              <span class="text-sm font-medium text-orange-600 bg-orange-100 px-2 py-1 rounded-full">↑ {analyticsData.crimeTrendPercentage}%</span>
-            {:else if analyticsData.crimeTrend === 'decreasing'}
-              <span class="text-sm font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">↓ {analyticsData.crimeTrendPercentage}%</span>
-            {:else}
-              <span class="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full">→ {analyticsData.crimeTrendPercentage}%</span>
-            {/if}
-          {:else}
-            <span class="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full">—</span>
-          {/if}
-        </div>
-        <h3 class="text-2xl font-bold text-gray-800 mb-1 capitalize">
-          {#if isLoading}
-            <span class="text-gray-400">Loading...</span>
-          {:else}
-            {analyticsData.crimeTrend}
-          {/if}
-        </h3>
-        <p class="text-gray-600 text-sm">Crime Trend</p>
       </div>
     </div>
 
@@ -1044,61 +1015,58 @@
           </div>
         </div>
 
-        <!-- Predictive Analytics -->
+        <!-- High Risk Areas -->
         <div class="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/50" in:fly={{ y: 20, duration: 300, delay: 600 }}>
           <div class="flex items-center space-x-3 mb-6">
-            <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+            <div class="w-10 h-10 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl flex items-center justify-center">
               <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
             </div>
             <div>
-              <h2 class="text-xl font-bold text-gray-800">Predictive Analytics</h2>
-              <p class="text-gray-600 text-sm">AI-powered crime prediction models</p>
+              <h2 class="text-xl font-bold text-gray-800">High Risk Areas</h2>
+              <p class="text-gray-600 text-sm">Locations with highest incident frequency</p>
             </div>
           </div>
           
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200">
-              <h3 class="font-semibold text-purple-700 mb-2">High Risk Areas</h3>
-              {#if isLoading}
-                <p class="text-sm text-purple-600">Loading...</p>
-              {:else if analyticsData.hotSpots.length === 0 || analyticsData.hotSpots[0] === 'No data available'}
-                <p class="text-sm text-purple-600">No location data available</p>
-              {:else}
-                <ul class="space-y-2">
-                  {#each analyticsData.hotSpots as spot}
-                    <li class="flex items-center text-sm text-purple-600" in:fade>
-                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                      </svg>
-                      {spot}
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
-            
-            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
-              <h3 class="font-semibold text-blue-700 mb-2">Prediction Accuracy</h3>
-              <div class="text-center">
-                <div class="text-3xl font-bold text-blue-600 mb-2">
-                  {#if predictionResults}
-                    {predictionResults.accuracy}%
-                  {:else}
-                    {reports.length > 10 ? '85.0%' : '70.0%'}
-                  {/if}
-                </div>
-                <p class="text-blue-600 text-sm">Model accuracy rate</p>
-                <div class="w-full bg-blue-200 rounded-full h-2 mt-3">
-                  <div 
-                    class="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-500" 
-                    style="width: {predictionResults ? predictionResults.accuracy : (reports.length > 10 ? 85 : 70)}%"
-                  ></div>
-                </div>
+          <div class="bg-gradient-to-r from-red-50 to-orange-50 p-6 rounded-xl border border-red-200">
+            {#if isLoading}
+              <div class="flex items-center justify-center py-8">
+                <svg class="animate-spin w-6 h-6 text-red-600 mr-3" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="text-sm text-red-600 font-medium">Loading location data...</p>
               </div>
-            </div>
+            {:else if analyticsData.hotSpots.length === 0 || analyticsData.hotSpots[0] === 'No data available'}
+              <div class="text-center py-8">
+                <svg class="w-16 h-16 text-red-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <p class="text-sm text-red-600 font-medium">No location data available</p>
+                <p class="text-xs text-red-500 mt-1">Reports with location data needed</p>
+              </div>
+            {:else}
+              <ul class="space-y-3">
+                {#each analyticsData.hotSpots as spot, index}
+                  <li class="flex items-start space-x-3 p-3 bg-white/60 rounded-lg border border-red-200 hover:bg-white/80 transition-colors" in:fade>
+                    <div class="flex-shrink-0 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                      {index + 1}
+                    </div>
+                    <div class="flex-1">
+                      <p class="text-sm font-medium text-red-800">{spot}</p>
+                      <p class="text-xs text-red-600 mt-1">High incident frequency area</p>
+                    </div>
+                    <svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           </div>
         </div>
       </div>
@@ -1223,62 +1191,6 @@
           </div>
         </div>
 
-        <!-- AI Insights -->
-        <div class="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/50" in:fly={{ y: 20, duration: 300, delay: 900 }}>
-          <div class="flex items-center space-x-3 mb-6">
-            <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-              </svg>
-            </div>
-            <div>
-              <h2 class="text-lg font-bold text-gray-800">AI Insights</h2>
-              <p class="text-gray-600 text-sm">Smart recommendations</p>
-            </div>
-          </div>
-          
-          <div class="space-y-3">
-            {#if isLoading}
-              <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <div class="flex items-center space-x-2">
-                  <svg class="animate-spin w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <p class="text-sm text-gray-600">Loading insights...</p>
-                </div>
-              </div>
-            {:else if aiInsights.length === 0}
-              <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <p class="text-sm text-gray-600">No insights available. Reports needed to generate insights.</p>
-              </div>
-            {:else}
-              {#each aiInsights as insight}
-                <div class="p-3 rounded-lg border {insight.type === 'info' ? 'bg-indigo-50 border-indigo-200' : insight.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}" in:fade>
-                  <div class="flex items-start space-x-2">
-                    {#if insight.type === 'info'}
-                      <svg class="w-5 h-5 text-indigo-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                      </svg>
-                    {:else if insight.type === 'success'}
-                      <svg class="w-5 h-5 text-green-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                      </svg>
-                    {:else}
-                      <svg class="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                      </svg>
-                    {/if}
-                    <div>
-                      <p class="text-sm font-medium {insight.type === 'info' ? 'text-indigo-800' : insight.type === 'success' ? 'text-green-800' : 'text-yellow-800'}">{insight.title}</p>
-                      <p class="text-xs {insight.type === 'info' ? 'text-indigo-600' : insight.type === 'success' ? 'text-green-600' : 'text-yellow-600'} mt-1">{insight.description}</p>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </div>
       </div>
     </div>
   </div>

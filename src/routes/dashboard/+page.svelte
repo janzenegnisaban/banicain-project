@@ -70,6 +70,8 @@
   let editAttachments: File[] = [];
   let editPreviewUrls: string[] = [];
   let editExistingEvidence: EvidenceBuckets = { media: [], text: [] };
+  let editResidentMetadata: ResidentMetadataResult | null = null;
+  let originalNotes: string = '';
   
   // Official roles that can access dashboard
   const officialRoles = ['Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
@@ -310,6 +312,16 @@
   
   function openEditModal(report: Report) {
     editingReport = report;
+    
+    // Parse notes to check if it's resident metadata
+    const parsedMetadata = parseResidentMetadata(report.notes ?? '');
+    originalNotes = report.notes || '';
+    
+    // If it's structured metadata, show the message instead of JSON
+    const displayNotes = parsedMetadata.isStructured 
+      ? (parsedMetadata.message || parsedMetadata.rawNotes || '')
+      : (report.notes || '');
+    
     editForm = {
       title: report.title || '',
       type: report.type || '',
@@ -319,13 +331,15 @@
       officer: report.officer || '',
       description: report.description || '',
       damage: report.damage || '',
-      notes: report.notes || '',
+      notes: displayNotes, // Show readable text instead of JSON
       evidence: Array.isArray(report.evidence) ? [...report.evidence] : [],
       suspects: Array.isArray(report.suspects) ? [...report.suspects] : [],
       victims: Array.isArray(report.victims) ? report.victims : (typeof report.victims === 'string' ? [report.victims] : [])
     };
     // Parse existing evidence for display
     editExistingEvidence = parseEvidenceEntries(report.evidence ?? []);
+    // Store parsed metadata for saving
+    editResidentMetadata = parsedMetadata;
     // Clear previous attachments
     editAttachments = [];
     editPreviewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -355,14 +369,22 @@
     editAttachments = [];
     editPreviewUrls = [];
     editExistingEvidence = { media: [], text: [] };
+    editResidentMetadata = null;
+    originalNotes = '';
   }
   
   function handleEditFilesSelected(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (!input.files) return;
+    if (!input.files || input.files.length === 0) return;
+    
     const newFiles = Array.from(input.files);
+    // Add new files to attachments
     editAttachments = [...editAttachments, ...newFiles];
+    // Create preview URLs immediately
     editPreviewUrls = [...editPreviewUrls, ...newFiles.map(file => URL.createObjectURL(file))];
+    
+    // Reset the input so the same file can be selected again if needed
+    input.value = '';
   }
   
   function removeEditAttachment(index: number) {
@@ -392,18 +414,36 @@
         attachmentDataUrls.push(JSON.stringify({
           type: fileType,
           name: file.name,
-          url: dataUrl
+          dataUrl: dataUrl  // Use 'dataUrl' to match parser expectations
         }));
       }
       
-      // Combine existing evidence with new attachments
-      const updatedEvidence = [...editForm.evidence, ...attachmentDataUrls];
+      // Combine existing evidence (from original report) with new attachments
+      // Use the original report's evidence array, not editForm.evidence which may contain parsed data
+      const originalEvidence = Array.isArray(editingReport.evidence) ? [...editingReport.evidence] : [];
+      const updatedEvidence = [...originalEvidence, ...attachmentDataUrls];
+      
+      // Handle notes: if it was originally resident metadata, update the message field
+      let finalNotes = editForm.notes;
+      if (editResidentMetadata?.isStructured && originalNotes) {
+        try {
+          // Parse the original JSON structure
+          const metadata = JSON.parse(originalNotes);
+          // Update only the message field, preserve the rest
+          metadata.message = editForm.notes;
+          finalNotes = JSON.stringify(metadata);
+        } catch {
+          // If parsing fails, just use the edited notes as-is
+          finalNotes = editForm.notes;
+        }
+      }
       
       const response = await fetch(`/api/reports?id=${editingReport.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           ...editForm,
+          notes: finalNotes,
           evidence: updatedEvidence,
           updateNote: 'Report details updated'
         })
@@ -1030,23 +1070,26 @@
 
                         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <div class="text-xs text-gray-500 mb-2">Evidence Collected</div>
+                            <div class="text-xs text-gray-500 mb-2 font-medium">Evidence Collected</div>
                             {#if evidence.media.length > 0}
                               <div class="grid grid-cols-2 gap-2">
                                 {#each evidence.media.slice(0, 4) as media}
-                                  <div class="relative">
+                                  <div class="relative group">
                                     {#if media.type === 'image'}
-                                      <img src={media.url} alt={media.name} class="w-full h-16 object-cover rounded-lg border border-gray-200" loading="lazy" />
+                                      <img src={media.url} alt={media.name} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" loading="lazy" />
                                     {:else}
-                                      <video src={media.url} class="w-full h-16 object-cover rounded-lg border border-gray-200" controls preload="metadata">
+                                      <video src={media.url} class="w-full h-20 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" controls preload="metadata">
                                         <track kind="captions" />
                                       </video>
                                     {/if}
+                                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs p-1.5 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <p class="truncate font-medium">{media.name}</p>
+                                    </div>
                                   </div>
                                 {/each}
                               </div>
                               {#if evidence.media.length > 4}
-                                <p class="text-xs text-gray-500 mt-2">+{evidence.media.length - 4} more</p>
+                                <p class="text-xs text-gray-500 mt-2 font-medium">+{evidence.media.length - 4} more item{evidence.media.length - 4 > 1 ? 's' : ''}</p>
                               {/if}
                             {:else if evidence.text.length}
                               <div class="flex flex-wrap gap-1">
@@ -1082,20 +1125,23 @@
                           </div>
                         {/if}
 
-                        {#if evidence.media.length}
+                        {#if evidence.media.length > 4}
                           <div class="mt-4">
-                            <div class="text-xs text-gray-500 mb-2">Resident Media ({evidence.media.length})</div>
+                            <div class="text-xs text-gray-500 mb-2 font-medium">All Resident Media ({evidence.media.length})</div>
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                               {#each evidence.media as media}
-                                <div class="space-y-1">
+                                <div class="relative group">
                                   {#if media.type === 'image'}
-                                    <img src={media.url} alt={media.name} class="w-full h-24 object-cover rounded-lg border border-gray-100" loading="lazy" />
+                                    <img src={media.url} alt={media.name} class="w-full h-24 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" loading="lazy" />
                                   {:else}
-                                    <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-100" controls preload="metadata">
+                                    <video src={media.url} class="w-full h-24 object-cover rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow" controls preload="metadata">
                                       <track kind="captions" />
                                     </video>
                                   {/if}
-                                  <div class="text-xs text-gray-600 truncate">{media.name}</div>
+                                  <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs p-1.5 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <p class="truncate font-medium">{media.name}</p>
+                                  </div>
+                                  <div class="text-xs text-gray-600 truncate mt-1 group-hover:hidden">{media.name}</div>
                                 </div>
                               {/each}
                             </div>
@@ -1582,9 +1628,9 @@
               </div>
             {/if}
 
-            {#if selectedEvidence.text.length}
+            {#if selectedEvidence.text.length > 0 && selectedEvidence.media.length === 0}
               <div>
-                <h3 class="text-lg font-semibold text-gray-800 mb-3">Evidence</h3>
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Text Evidence</h3>
                 <div class="flex flex-wrap gap-2">
                   {#each selectedEvidence.text as item}
                     <span class="px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-md border border-blue-200">
@@ -1765,7 +1811,11 @@
           <div>
             <label for="edit-notes" class="block text-sm font-medium text-gray-700 mb-2">
               Notes
-              <span class="text-xs text-gray-500 font-normal ml-2">(Add any additional information or updates about this report)</span>
+              {#if editResidentMetadata?.isStructured}
+                <span class="text-xs text-emerald-600 font-normal ml-2">(Resident submission - editing message)</span>
+              {:else}
+                <span class="text-xs text-gray-500 font-normal ml-2">(Add any additional information or updates about this report)</span>
+              {/if}
             </label>
             <textarea 
               id="edit-notes"
@@ -1779,22 +1829,28 @@
           
           <!-- Existing Evidence Section -->
           {#if editExistingEvidence.media.length > 0}
-            <div>
-              <div class="block text-sm font-medium text-gray-700 mb-3">
-                Existing Evidence ({editExistingEvidence.media.length})
+            <div class="mb-6">
+              <div class="flex items-center justify-between mb-3">
+                <div class="block text-sm font-medium text-gray-700">
+                  Existing Evidence ({editExistingEvidence.media.length})
+                </div>
+                <span class="text-xs text-gray-500">Current attachments</span>
               </div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                 {#each editExistingEvidence.media as media, index}
                   <div class="relative group">
                     {#if media.type === 'image'}
-                      <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border border-gray-200" loading="lazy" />
+                      <img src={media.url} alt={media.name} class="w-full h-32 object-cover rounded-lg border-2 border-gray-300 shadow-sm hover:border-gray-400 transition-all" loading="lazy" />
                     {:else}
-                      <video src={media.url} class="w-full h-32 object-cover rounded-lg border border-gray-200" controls preload="metadata">
+                      <video src={media.url} class="w-full h-32 object-cover rounded-lg border-2 border-gray-300 shadow-sm hover:border-gray-400 transition-all" controls preload="metadata">
                         <track kind="captions" />
                       </video>
                     {/if}
-                    <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 rounded-b-lg truncate">
-                      {media.name}
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/70 to-transparent text-white text-xs p-2 rounded-b-lg">
+                      <p class="truncate font-medium" title={media.name}>{media.name}</p>
+                      {#if media.size}
+                        <p class="text-xs text-gray-300 mt-0.5">{(media.size / 1024).toFixed(1)} KB</p>
+                      {/if}
                     </div>
                   </div>
                 {/each}
@@ -1830,20 +1886,25 @@
             
             {#if editPreviewUrls.length > 0}
               <div class="mt-4">
-                <p class="text-sm font-medium text-gray-700 mb-3">New Files Selected ({editPreviewUrls.length})</p>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                <div class="flex items-center justify-between mb-3">
+                  <p class="text-sm font-medium text-gray-700">
+                    New Files Selected ({editPreviewUrls.length})
+                  </p>
+                  <span class="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-full">Pending</span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-emerald-50/30 rounded-lg border-2 border-emerald-200 border-dashed">
                   {#each editPreviewUrls as url, index}
                     <div class="relative group">
                       {#if editAttachments[index].type.startsWith('image/')}
-                        <img src={url} alt={editAttachments[index].name} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-300 shadow-md" />
+                        <img src={url} alt={editAttachments[index].name} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" />
                       {:else}
-                        <video src={url} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-300 shadow-md" controls preload="metadata">
+                        <video src={url} class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" controls preload="metadata">
                           <track kind="captions" />
                         </video>
                       {/if}
                       <button
                         type="button"
-                        class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-colors"
+                        class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-all hover:scale-110 z-10"
                         on:click={() => removeEditAttachment(index)}
                         aria-label="Remove attachment"
                       >
@@ -1851,14 +1912,19 @@
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
                       </button>
-                      <div class="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2 rounded-b-lg">
-                        <p class="truncate font-medium">{editAttachments[index].name}</p>
-                        <p class="text-xs text-gray-300">{(editAttachments[index].size / 1024).toFixed(1)} KB</p>
+                      <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/75 to-transparent text-white text-xs p-2 rounded-b-lg">
+                        <p class="truncate font-semibold" title={editAttachments[index].name}>{editAttachments[index].name}</p>
+                        <p class="text-xs text-gray-200 mt-0.5">{(editAttachments[index].size / 1024).toFixed(1)} KB</p>
                       </div>
                     </div>
                   {/each}
                 </div>
-                <p class="mt-2 text-xs text-emerald-600 font-medium">These files will be added when you save changes</p>
+                <div class="mt-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-100 px-3 py-2 rounded-lg">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <p class="font-medium">These files will be added when you save changes</p>
+                </div>
               </div>
             {/if}
           </div>
