@@ -9,6 +9,7 @@ export type ReportUpdate = {
 
 export type Report = {
 	id: string;
+	shortId?: string | null;
 	title: string;
 	type: string;
 	status: ReportStatus;

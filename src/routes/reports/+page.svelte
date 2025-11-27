@@ -661,7 +661,8 @@
       report.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.officer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.id.toLowerCase().includes(searchTerm.toLowerCase());
+      report.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (report.shortId && report.shortId.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return matchesStatus && matchesPriority && matchesType && matchesSearch;
   });
@@ -974,7 +975,7 @@
         // Report header
         pdf.setFontSize(14);
         pdf.setFont(baseFont, 'bold');
-        pdf.text(`${report.id} - ${report.title}`, margin, yPos);
+         pdf.text(`${report.shortId || report.id} - ${report.title}`, margin, yPos);
         yPos += lineHeight;
 
         pdf.setFontSize(10);
@@ -1372,7 +1373,7 @@
               <div class="flex-1">
                 <div class="flex items-center space-x-3 mb-3">
                   <h3 class="text-xl font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                    {report.id} - {report.title}
+                     {report.shortId || report.id} - {report.title}
                   </h3>
                   <span class="px-3 py-1 text-xs font-medium rounded-full border {getPriorityColor(report.priority)}">
                     {report.priority}
@@ -1628,7 +1629,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
         <div class="flex items-center justify-between mb-6">
-          <h2 class="text-2xl font-bold text-gray-800">{selectedReport.id} - {selectedReport.title}</h2>
+           <h2 class="text-2xl font-bold text-gray-800">{selectedReport.shortId || selectedReport.id} - {selectedReport.title}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close modal"
@@ -1802,9 +1803,9 @@
                 {#if selectedResidentDetails?.isStructured}
                   {#if selectedResidentDetails.message}
                     <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedResidentDetails.message}</p>
-                  {:else}
+                {:else}
                     <p class="text-gray-500 italic">Resident did not include additional notes.</p>
-                  {/if}
+                {/if}
                 {:else if selectedReport.notes}
                   <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedReport.notes}</p>
                 {:else}
@@ -1965,7 +1966,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
         <div class="flex items-center justify-between mb-6">
-          <h2 class="text-2xl font-bold text-gray-800">{editingReport ? `Edit Report - ${editingReport.id}` : 'New Report'}</h2>
+           <h2 class="text-2xl font-bold text-gray-800">{editingReport ? `Edit Report - ${editingReport.shortId || editingReport.id}` : 'New Report'}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close edit modal"
@@ -2109,7 +2110,7 @@
               <div class="flex items-center justify-between mb-3">
                 <div class="block text-sm font-medium text-gray-700">
                   Existing Evidence ({editExistingEvidence.media.length})
-                </div>
+            </div>
                 <span class="text-xs text-gray-500">Current attachments</span>
               </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
@@ -2128,10 +2129,10 @@
                         <p class="text-xs text-gray-300 mt-0.5">{(media.size / 1024).toFixed(1)} KB</p>
                       {/if}
                     </div>
-                  </div>
-                {/each}
-              </div>
+                </div>
+              {/each}
             </div>
+          </div>
           {/if}
 
           <!-- Suspects -->
@@ -2219,14 +2220,14 @@
                   <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
                   <p class="text-xs text-gray-500">Images or Videos (PNG, JPG, MP4, MOV)</p>
                 </div>
-                <input
-                  type="file"
-                  id="file-upload"
-                  accept="image/*,video/*"
-                  multiple
-                  on:change={handleFileUpload}
-                  class="hidden"
-                />
+              <input
+                type="file"
+                id="file-upload"
+                accept="image/*,video/*"
+                multiple
+                on:change={handleFileUpload}
+                class="hidden"
+              />
               </label>
             </div>
             
@@ -2240,16 +2241,16 @@
                   <span class="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-full">Pending</span>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 bg-emerald-50/30 rounded-lg border-2 border-emerald-200 border-dashed">
-                  {#each filePreviewUrls as url, index}
+                {#each filePreviewUrls as url, index}
                     <div class="relative group" transition:scale={{ duration: 200 }}>
-                      {#if uploadedFiles[index]?.type.startsWith('image/')}
+                    {#if uploadedFiles[index]?.type.startsWith('image/')}
                         <img 
                           src={url} 
                           alt={uploadedFiles[index]?.name || 'Preview'} 
                           class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" 
                           loading="eager"
                         />
-                      {:else if uploadedFiles[index]?.type.startsWith('video/')}
+                    {:else if uploadedFiles[index]?.type.startsWith('video/')}
                         <video 
                           src={url} 
                           class="w-full h-32 object-cover rounded-lg border-2 border-emerald-400 shadow-md hover:shadow-lg transition-all" 
@@ -2258,25 +2259,25 @@
                         >
                           <track kind="captions" />
                         </video>
-                      {/if}
-                      <button
-                        type="button"
+                    {/if}
+                    <button
+                      type="button"
                         class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-all hover:scale-110 z-10"
-                        on:click={() => removeFile(index)}
+                      on:click={() => removeFile(index)}
                         aria-label="Remove attachment"
-                      >
+                    >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
-                      </button>
+                    </button>
                       <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/75 to-transparent text-white text-xs p-2 rounded-b-lg">
                         <p class="truncate font-semibold" title={uploadedFiles[index]?.name}>{uploadedFiles[index]?.name || 'Unknown file'}</p>
                         {#if uploadedFiles[index]?.size}
                           <p class="text-xs text-gray-200 mt-0.5">{(uploadedFiles[index].size / 1024).toFixed(1)} KB</p>
                         {/if}
                       </div>
-                    </div>
-                  {/each}
+                  </div>
+                {/each}
                 </div>
                 <div class="mt-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-100 px-3 py-2 rounded-lg">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2336,7 +2337,7 @@
         
         <h2 class="text-2xl font-bold text-gray-800 text-center mb-2">Delete Report?</h2>
         <p class="text-gray-600 text-center mb-6">
-          Are you sure you want to delete <strong>{reportToDelete.id} - {reportToDelete.title}</strong>? This action cannot be undone.
+           Are you sure you want to delete <strong>{reportToDelete.shortId || reportToDelete.id} - {reportToDelete.title}</strong>? This action cannot be undone.
         </p>
 
         <div class="flex space-x-3">
