@@ -26,6 +26,7 @@
   let submitError = '';
   let submissionSummary: { attachments: number; submittedAt: string } | null = null;
   const autosaveKey = 'residentReportDraft';
+  const guestReporterKey = 'guestReporterId';
   let autosaveId: number | null = null;
   let now: Date = new Date();
   let nowTimerId: number | null = null;
@@ -129,6 +130,8 @@
 
   function getStatusBadgeClasses(status: Report['status']) {
     switch (status) {
+      case 'Pending Confirmation':
+        return 'bg-amber-400/20 border border-amber-300/40 text-amber-100';
       case 'Solved':
         return 'bg-emerald-400/20 border border-emerald-300/40 text-emerald-100';
       case 'Under Investigation':
@@ -226,13 +229,28 @@
     }
   });
 
+  function ensureReporterId(): string {
+    if (currentUser?.id) return currentUser.id;
+    try {
+      const storedGuestId = localStorage.getItem(guestReporterKey);
+      if (storedGuestId) {
+        currentUser = { id: storedGuestId, role: 'Guest' };
+        return storedGuestId;
+      }
+      const newGuestId = generateId('guest');
+      localStorage.setItem(guestReporterKey, newGuestId);
+      currentUser = { id: newGuestId, role: 'Guest' };
+      return newGuestId;
+    } catch {
+      const fallbackId = generateId('guest');
+      currentUser = { id: fallbackId, role: 'Guest' };
+      return fallbackId;
+    }
+  }
+
   async function submitReport() {
     if (isSubmitting) return;
-    if (!currentUser?.id) {
-      submitError = 'Please sign in as a resident to submit a report.';
-      goto('/login?role=resident');
-      return;
-    }
+    const reporterId = ensureReporterId();
     submitError = '';
     addressError = '';
     contactError = '';
@@ -284,7 +302,7 @@
         damage: 'Resident Submission',
         notes: metadata,
         evidence: attachmentPayloads.map(serializeMediaAttachment),
-        reporterId: currentUser.id
+        reporterId
       };
 
       const response = await authorizedFetch('/api/reports', {
@@ -305,7 +323,7 @@
       resetForm();
       submissionSummary = summary;
       submitted = true;
-      await fetchMyReports(currentUser.id);
+      await fetchMyReports(reporterId);
     } catch (error) {
       console.error(error);
       submitError = 'Unable to submit your report right now. Please try again in a moment.';
@@ -318,21 +336,36 @@
     try {
       const rawUser = localStorage.getItem('user');
       const parsed = rawUser ? JSON.parse(rawUser) : null;
-      if (!parsed || parsed.role !== 'Resident') {
-        goto('/login?role=resident');
-        return;
+      if (parsed && parsed.role === 'Resident') {
+        if (!parsed.id) {
+          parsed.id = generateId('resident');
+          localStorage.setItem('user', JSON.stringify(parsed));
+        }
+        currentUser = parsed;
+      } else {
+        const storedGuestId = localStorage.getItem(guestReporterKey);
+        const guestId = storedGuestId || generateId('guest');
+        if (!storedGuestId) {
+          localStorage.setItem(guestReporterKey, guestId);
+        }
+        currentUser = { id: guestId, role: 'Guest' };
       }
-      if (!parsed.id) {
-        parsed.id = generateId('resident');
-        localStorage.setItem('user', JSON.stringify(parsed));
-      }
-      currentUser = parsed;
       isAuthChecked = true;
-      fetchMyReports(parsed.id);
-      subscribeToMyReports(parsed.id);
+      // Only fetch reports if user is authenticated (not guest)
+      if (currentUser?.id && currentUser?.role === 'Resident') {
+        fetchMyReports(currentUser.id);
+        subscribeToMyReports(currentUser.id);
+      }
     } catch {
-      goto('/login?role=resident');
+      const fallbackId = generateId('guest');
+      currentUser = { id: fallbackId, role: 'Guest' };
+      isAuthChecked = true;
+      // Don't fetch reports for guests
     }
+  }
+  
+  function isAuthenticatedResident(): boolean {
+    return currentUser?.role === 'Resident' && currentUser?.id !== null;
   }
 
   async function fetchMyReports(userId: string) {
@@ -409,6 +442,14 @@
       return date.toLocaleString();
     }
   }
+  
+  function formatReportId(id: string | null | undefined): string {
+    if (!id) return 'N/A';
+    // If it's already a short ID (like RPT-XXXXXX), return as is
+    if (id.includes('RPT-') && id.length <= 11) return id;
+    // Otherwise, show last 6 characters
+    return id.length > 6 ? `...${id.slice(-6)}` : id;
+  }
 
   async function handleLogout() {
     try {
@@ -424,6 +465,7 @@
       // Clear local storage
       localStorage.removeItem('user');
       localStorage.removeItem(autosaveKey);
+      localStorage.removeItem(guestReporterKey);
 
       // Redirect to landing page
       goto('/');
@@ -432,6 +474,7 @@
       // Still redirect even if logout fails
       localStorage.removeItem('user');
       localStorage.removeItem(autosaveKey);
+      localStorage.removeItem(guestReporterKey);
       goto('/');
     }
   }
@@ -452,6 +495,15 @@
             <div class="mt-3 text-white/90 text-sm">Current: {formatDateTime(now)}</div>
           </div>
           <div class="flex items-center gap-3">
+            {#if isAuthenticatedResident()}
+              <button
+                on:click={() => goto('/residents/dashboard')}
+                class="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all duration-300 hover:scale-105"
+                aria-label="Open resident dashboard"
+              >
+                Dashboard
+              </button>
+            {/if}
             <button
               on:click={() => goto('/')}
               class="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all duration-300 hover:scale-105"
@@ -489,18 +541,31 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Report Time</label>
-            <input type="text" value={formatDateTime(now)} readonly class="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700" />
+            <label for="report-time" class="block text-sm font-medium text-gray-700 mb-2">Report Time</label>
+            <input
+              id="report-time"
+              type="text"
+              value={formatDateTime(now)}
+              readonly
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700"
+            />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
-            <input type="text" bind:value={name} placeholder="Your full name" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            <label for="resident-name" class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+            <input
+              id="resident-name"
+              type="text"
+              bind:value={name}
+              placeholder="Your full name"
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <label for="resident-address" class="block text-sm font-medium text-gray-700 mb-2">Address</label>
             <div class="mb-2">
-              <label class="block text-xs font-medium text-gray-600 mb-1">Quick Select Location (Optional)</label>
+              <label for="resident-location-shortcut" class="block text-xs font-medium text-gray-600 mb-1">Quick Select Location (Optional)</label>
               <select
+                id="resident-location-shortcut"
                 bind:value={selectedLocationShortcut}
                 class="w-full px-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               >
@@ -510,7 +575,13 @@
                 {/each}
               </select>
             </div>
-            <input type="text" bind:value={address} placeholder="Your address in Banicain, Olongapo City, Zambales" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            <input
+              id="resident-address"
+              type="text"
+              bind:value={address}
+              placeholder="Your address in Banicain, Olongapo City, Zambales"
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
             {#if addressError}
               <p class="mt-1 text-xs text-red-600">{addressError}</p>
             {:else}
@@ -518,8 +589,9 @@
             {/if}
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Contact</label>
+            <label for="resident-contact" class="block text-sm font-medium text-gray-700 mb-2">Contact</label>
             <input 
+              id="resident-contact"
               type="tel" 
               bind:value={contact} 
               on:input={handleContactInput}
@@ -534,8 +606,9 @@
             {/if}
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Type of Report</label>
+            <label for="type-of-report" class="block text-sm font-medium text-gray-700 mb-2">Type of Report</label>
             <select
+              id="type-of-report"
               bind:value={typeOfReport}
               class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             >
@@ -546,6 +619,7 @@
             </select>
             {#if typeOfReport === 'Other (not listed)'}
               <input
+                aria-label="Other report type"
                 type="text"
                 bind:value={otherType}
                 placeholder="Describe the type of incident"
@@ -554,16 +628,23 @@
             {/if}
           </div>
           <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-            <textarea bind:value={notes} rows="4" placeholder="Add additional details..." class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"></textarea>
+            <label for="report-notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <textarea
+              id="report-notes"
+              bind:value={notes}
+              rows="4"
+              placeholder="Add additional details..."
+              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            ></textarea>
           </div>
         </div>
 
         <div class="mt-6">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Attachments (images or short videos)</label>
+          <label for="report-attachments" class="block text-sm font-medium text-gray-700 mb-2">Attachments (images or short videos)</label>
           <p class="text-xs text-gray-500 mb-3">Uploads are encrypted locally and shown to officials along the sides of their dashboard cards.</p>
           <div class="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50">
             <input 
+              id="report-attachments"
               type="file" 
               multiple
               accept="image/*,video/*"
@@ -577,7 +658,9 @@
                     {#if file.type.startsWith('image/')}
                       <img src={previewUrls[i]} alt={file.name} class="w-full h-32 object-cover rounded-lg border border-gray-200" />
                     {:else}
-                      <video src={previewUrls[i]} class="w-full h-32 object-cover rounded-lg border border-gray-200" />
+                      <video src={previewUrls[i]} class="w-full h-32 object-cover rounded-lg border border-gray-200">
+                        <track kind="captions" srclang="en" label="English" />
+                      </video>
                     {/if}
                     <button type="button" class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition" on:click={() => removeAttachment(i)}>Remove</button>
                     <div class="mt-2 text-xs text-gray-600 truncate">{file.name}</div>
@@ -682,7 +765,7 @@
             <h2 class="text-3xl font-semibold text-white mt-2">My Reports</h2>
             <p class="text-sm text-slate-300">Track the progress of every incident you have filed with Brgy. Banicain.</p>
           </div>
-          {#if currentUser?.id}
+          {#if isAuthenticatedResident()}
             <button
               type="button"
               class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
@@ -695,6 +778,49 @@
 
         {#if !isAuthChecked}
           <p class="text-slate-300">Checking your account…</p>
+        {:else if !isAuthenticatedResident()}
+          <!-- Guest users - prompt to sign up/login -->
+          <div class="p-8 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-900/20 to-orange-900/20 backdrop-blur-sm">
+            <div class="flex flex-col items-center text-center space-y-4">
+              <div class="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-semibold text-white mb-2">Sign In to View Your Report History</h3>
+                <p class="text-slate-300 mb-6 max-w-md">
+                  To track your submitted reports and see their status updates, please sign in or create an account. 
+                  Guest submissions are anonymous and cannot be tracked.
+                </p>
+              </div>
+              <div class="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  class="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  on:click={() => goto('/login?role=resident')}
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                  </svg>
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  class="px-6 py-3 bg-white/10 border-2 border-white/30 hover:bg-white/20 text-white font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-2"
+                  on:click={() => goto('/signup?role=resident')}
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                  </svg>
+                  Create Account
+                </button>
+              </div>
+              <p class="text-xs text-slate-400 mt-4">
+                Already have an account? <button class="text-amber-400 hover:text-amber-300 underline" on:click={() => goto('/login?role=resident')}>Sign in here</button>
+              </p>
+            </div>
+          </div>
         {:else if myReportsLoading}
           <div class="flex items-center space-x-3 text-slate-200">
             <div class="h-4 w-4 border-2 border-primary-300 border-t-transparent rounded-full animate-spin"></div>
@@ -716,7 +842,7 @@
                 <div class="relative space-y-5">
                   <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Report #{report.id}</p>
+                      <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Report #{formatReportId(report.shortId || report.id)}</p>
                       <p class="text-2xl font-semibold text-white mt-1">{report.title}</p>
                       <p class="text-sm text-slate-300">Filed on {report.date} at {report.time}</p>
                     </div>

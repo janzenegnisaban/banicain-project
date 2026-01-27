@@ -229,7 +229,7 @@
   let editForm = {
     title: '',
     type: '',
-    status: 'Open' as 'Open' | 'Under Investigation' | 'Solved',
+    status: 'Open' as 'Pending Confirmation' | 'Open' | 'Under Investigation' | 'Solved',
     priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Critical',
     location: '',
     officer: '',
@@ -293,7 +293,7 @@
     'Assault'
   ];
 
-  const statusSteps = ['Open', 'Under Investigation', 'Solved'];
+  const statusSteps = ['Pending Confirmation', 'Open', 'Under Investigation', 'Solved'];
 
   function getStepIndex(status: string) {
     return Math.max(0, statusSteps.indexOf(status));
@@ -464,7 +464,7 @@
           ? `${residentForm.typeOfReport} - ${residentForm.name}`
           : `Community Report - ${residentForm.name}`,
         type: residentForm.typeOfReport || 'Incident',
-        status: 'Open',
+        status: 'Pending Confirmation',
         priority: 'High',
         location: residentForm.address || 'Location to be determined',
         date: residentForm.date || new Date().toISOString().slice(0, 10),
@@ -669,6 +669,7 @@
 
   // Statistics
   $: totalReports = crimeReports.length;
+  $: pendingConfirmationReports = crimeReports.filter(r => r.status === 'Pending Confirmation').length;
   $: solvedReports = crimeReports.filter(r => r.status === 'Solved').length;
   $: openReports = crimeReports.filter(r => r.status === 'Open').length;
   $: investigatingReports = crimeReports.filter(r => r.status === 'Under Investigation').length;
@@ -870,6 +871,34 @@
     }
   }
 
+  async function confirmReport(report: Report) {
+    if (!report || report.status !== 'Pending Confirmation') return;
+    try {
+      const response = await fetch(`/api/reports?id=${report.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          status: 'Open',
+          updateNote: 'Report confirmed by officials'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        upsertReport(data.report);
+        if (showReportModal && selectedReport?.id === data.report.id) {
+          selectedReport = data.report;
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.message || 'Failed to confirm report');
+      }
+    } catch (error) {
+      console.error('Error confirming report:', error);
+      alert('Error confirming report');
+    }
+  }
+
   function confirmDelete(report: Report) {
     reportToDelete = report;
     showDeleteConfirm = true;
@@ -924,11 +953,20 @@
 
   function getStatusColor(status: Report['status']) {
     switch(status) {
+      case 'Pending Confirmation': return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'Solved': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'Open': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'Under Investigation': return 'bg-purple-100 text-purple-700 border-purple-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
+  }
+  
+  function formatReportId(id: string | null | undefined): string {
+    if (!id) return 'N/A';
+    // If it's already a short ID (like RPT-XXXXXX), return as is
+    if (id.includes('RPT-') && id.length <= 11) return id;
+    // Otherwise, show last 6 characters
+    return id.length > 6 ? `...${id.slice(-6)}` : id;
   }
 
   async function exportReportsToPDF() {
@@ -975,7 +1013,7 @@
         // Report header
         pdf.setFontSize(14);
         pdf.setFont(baseFont, 'bold');
-         pdf.text(`${report.shortId || report.id} - ${report.title}`, margin, yPos);
+         pdf.text(`${formatReportId(report.shortId || report.id)} - ${report.title}`, margin, yPos);
         yPos += lineHeight;
 
         pdf.setFontSize(10);
@@ -1191,7 +1229,7 @@
     </div>
 
     <!-- Statistics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
       <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50">
         <div class="flex items-center justify-between">
           <div>
@@ -1201,6 +1239,20 @@
           <div class="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
             <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-600">Pending Confirmation</p>
+            <p class="text-2xl font-bold text-amber-600">{pendingConfirmationReports}</p>
+          </div>
+          <div class="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
           </div>
         </div>
@@ -1318,6 +1370,7 @@
                 <label for="filter-status" class="block text-sm font-medium text-gray-700 mb-2">Status</label>
                 <select id="filter-status" bind:value={statusFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
                   <option value="All">All Status</option>
+                  <option value="Pending Confirmation">Pending Confirmation</option>
                   <option value="Open">Open</option>
                   <option value="Under Investigation">Under Investigation</option>
                   <option value="Solved">Solved</option>
@@ -1373,7 +1426,7 @@
               <div class="flex-1">
                 <div class="flex items-center space-x-3 mb-3">
                   <h3 class="text-xl font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                     {report.shortId || report.id} - {report.title}
+                     {formatReportId(report.shortId || report.id)} - {report.title}
                   </h3>
                   <span class="px-3 py-1 text-xs font-medium rounded-full border {getPriorityColor(report.priority)}">
                     {report.priority}
@@ -1558,6 +1611,18 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                   </svg>
                 </button>
+                {#if report.status === 'Pending Confirmation'}
+                  <button 
+                    class="text-emerald-600 hover:text-emerald-700 p-2 rounded-lg hover:bg-emerald-50 transition-colors" 
+                    title="Confirm Report"
+                    aria-label="Confirm Report"
+                    on:click={() => confirmReport(report)}
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </button>
+                {/if}
                 <button 
                   class="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors" 
                   title="Edit Case"
@@ -1591,12 +1656,14 @@
             <span class="text-gray-600">Showing {filteredReports.length} of {crimeReports.length} reports</span>
             <div class="flex items-center space-x-4">
               <span class="text-gray-500">Status Legend:</span>
-                  <span class="w-3 h-3 bg-indigo-600 rounded-full"></span>
-              <span class="text-xs text-gray-600">Solved</span>
+              <span class="w-3 h-3 bg-amber-500 rounded-full"></span>
+              <span class="text-xs text-gray-600">Pending</span>
               <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
               <span class="text-xs text-gray-600">Open</span>
               <span class="w-3 h-3 bg-purple-500 rounded-full"></span>
               <span class="text-xs text-gray-600">Investigating</span>
+              <span class="w-3 h-3 bg-emerald-500 rounded-full"></span>
+              <span class="text-xs text-gray-600">Solved</span>
             </div>
           </div>
               <button 
@@ -1629,7 +1696,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
         <div class="flex items-center justify-between mb-6">
-           <h2 class="text-2xl font-bold text-gray-800">{selectedReport.shortId || selectedReport.id} - {selectedReport.title}</h2>
+           <h2 class="text-2xl font-bold text-gray-800">{formatReportId(selectedReport.shortId || selectedReport.id)} - {selectedReport.title}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close modal"
@@ -1823,6 +1890,14 @@
           >
             Close
           </button>
+          {#if selectedReport.status === 'Pending Confirmation'}
+            <button 
+              class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              on:click={() => selectedReport && confirmReport(selectedReport)}
+            >
+              Confirm Report
+            </button>
+          {/if}
           <button 
             class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             on:click={() => {
@@ -1966,7 +2041,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
         <div class="flex items-center justify-between mb-6">
-           <h2 class="text-2xl font-bold text-gray-800">{editingReport ? `Edit Report - ${editingReport.shortId || editingReport.id}` : 'New Report'}</h2>
+           <h2 class="text-2xl font-bold text-gray-800">{editingReport ? `Edit Report - ${formatReportId(editingReport.shortId || editingReport.id)}` : 'New Report'}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close edit modal"
@@ -2027,6 +2102,7 @@
                 bind:value={editForm.status}
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               >
+                <option value="Pending Confirmation">Pending Confirmation</option>
                 <option value="Open">Open</option>
                 <option value="Under Investigation">Under Investigation</option>
                 <option value="Solved">Solved</option>
@@ -2337,7 +2413,7 @@
         
         <h2 class="text-2xl font-bold text-gray-800 text-center mb-2">Delete Report?</h2>
         <p class="text-gray-600 text-center mb-6">
-           Are you sure you want to delete <strong>{reportToDelete.shortId || reportToDelete.id} - {reportToDelete.title}</strong>? This action cannot be undone.
+           Are you sure you want to delete <strong>{formatReportId(reportToDelete.shortId || reportToDelete.id)} - {reportToDelete.title}</strong>? This action cannot be undone.
         </p>
 
         <div class="flex space-x-3">

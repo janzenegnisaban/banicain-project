@@ -41,6 +41,10 @@ export function asStringArray(value: string[] | string | null | undefined): stri
 
 function normalizeStatus(rawStatus: string): ReportStatus {
 	const statusMap: Record<string, ReportStatus> = {
+		pending_confirmation: 'Pending Confirmation',
+		pending: 'Pending Confirmation',
+		'pending confirmation': 'Pending Confirmation',
+		awaiting_confirmation: 'Pending Confirmation',
 		open: 'Open',
 		in_progress: 'Under Investigation',
 		investigating: 'Under Investigation',
@@ -86,6 +90,7 @@ export function mapRowToReport(row: ReportRow): Report {
 
 export function mapStatusToDb(status: ReportStatus): string {
 	const statusMap: Record<ReportStatus, string> = {
+		'Pending Confirmation': 'pending_confirmation',
 		Open: 'open',
 		'Under Investigation': 'investigating',
 		Solved: 'resolved'

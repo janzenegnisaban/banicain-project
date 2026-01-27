@@ -96,12 +96,6 @@ onMount(() => {
 
 function handleResidentEntry() {
   showRoleChooser = false;
-  const isResident =
-    currentUser?.role === 'Resident' && currentUser?.isAuthenticated;
-  if (!isResident) {
-    goto('/login?role=resident');
-    return;
-  }
   goto('/residents');
 }
 </script>

@@ -1,4 +1,4 @@
-export type ReportStatus = 'Open' | 'Under Investigation' | 'Solved';
+export type ReportStatus = 'Pending Confirmation' | 'Open' | 'Under Investigation' | 'Solved';
 export type ReportPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export type ReportUpdate = {

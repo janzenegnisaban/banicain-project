@@ -17,9 +17,18 @@ import {
 } from '$lib/server/reportRepository';
 import { seedMockDataToDatabase } from '$lib/server/mockDataSeeder';
 import { getSupabaseClientForRequest } from '$lib/server/supabase';
+import { parseResidentMetadata } from '$lib/utils/reportParsing';
 
 async function loadReports(client?: SupabaseClient): Promise<Report[]> {
-	// Source of truth is Supabase. No more in-memory seeding here.
+	// Check in-memory store first to avoid unnecessary database queries
+	const cached = getReports();
+	if (cached.length > 0) {
+		// Return cached reports, but still refresh in background if needed
+		// (For now, we'll use cached data to reduce load)
+		return cached;
+	}
+	
+	// Only fetch from database if we have no cached reports
 	const remote = await fetchReportsFromDatabase(client);
 	replaceReports(remote);
 	return remote;
@@ -35,8 +44,37 @@ function asStringArray(value: unknown): string[] {
 	return [];
 }
 
+const allowedStatuses: Report['status'][] = [
+	'Pending Confirmation',
+	'Open',
+	'Under Investigation',
+	'Solved'
+];
+
+function normalizeStatusInput(value: unknown): Report['status'] | null {
+	if (typeof value !== 'string') return null;
+	const normalized = value.trim().toLowerCase();
+	return allowedStatuses.find(status => status.toLowerCase() === normalized) ?? null;
+}
+
+function isResidentSubmission(payload: Record<string, unknown>): boolean {
+	const hasReporterId =
+		typeof payload.reporterId === 'string' && payload.reporterId.trim().length > 0;
+	const notes = typeof payload.notes === 'string' ? payload.notes : '';
+	const parsedNotes = parseResidentMetadata(notes);
+	return hasReporterId || parsedNotes.isStructured;
+}
+
 function buildNewReport(payload: Record<string, unknown>): Report {
 	const now = new Date();
+	const requestedStatus = normalizeStatusInput(payload.status);
+	const status: Report['status'] = isResidentSubmission(payload)
+		? 'Pending Confirmation'
+		: requestedStatus ?? 'Open';
+	const initialUpdateNote =
+		status === 'Pending Confirmation'
+			? 'Report submitted and awaiting official confirmation'
+			: 'Report submitted';
 	return {
 		id:
 			(typeof payload.id === 'string' && payload.id) ||
@@ -46,7 +84,7 @@ function buildNewReport(payload: Record<string, unknown>): Report {
 				.toUpperCase()}`,
 		title: (payload.title as string) ?? 'Untitled Report',
 		type: (payload.type as string) ?? 'Incident',
-		status: 'Open',
+		status,
 		priority: (payload.priority as Report['priority']) ?? 'Medium',
 		location: (payload.location as string) ?? 'Unknown',
 		date: now.toISOString().slice(0, 10),
@@ -66,7 +104,7 @@ function buildNewReport(payload: Record<string, unknown>): Report {
 			{
 				date: now.toISOString().slice(0, 10),
 				time: now.toTimeString().slice(0, 5),
-				note: 'Report submitted'
+				note: initialUpdateNote
 			}
 		],
 		reporterId: typeof payload.reporterId === 'string' && payload.reporterId.length > 0 ? payload.reporterId : null

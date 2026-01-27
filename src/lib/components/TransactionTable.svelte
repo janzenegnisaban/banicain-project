@@ -11,6 +11,7 @@
   // Function to get status color class for crime reports
   function getStatusColor(status: string) {
     switch(status) {
+      case 'Pending Confirmation': return 'bg-amber-500';
       case 'Solved': return 'bg-green-500';
       case 'Open': return 'bg-yellow-500';
       case 'Cold': return 'bg-blue-500';

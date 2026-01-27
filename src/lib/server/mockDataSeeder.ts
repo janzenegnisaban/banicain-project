@@ -23,7 +23,7 @@ export function generateMockReports(reporterId = '00000000-0000-0000-0000-000000
 	const createReport = (
 		title: string,
 		type: string,
-		status: 'Open' | 'Under Investigation' | 'Solved',
+		status: Report['status'],
 		priority: 'Low' | 'Medium' | 'High' | 'Critical',
 		location: string,
 		dateStr: string,

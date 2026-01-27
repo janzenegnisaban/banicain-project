@@ -195,15 +195,17 @@
   
   function getStatusStep(status: string): number {
     switch (status) {
-      case 'Open': return 1;
-      case 'Under Investigation': return 2;
-      case 'Solved': return 3;
+      case 'Pending Confirmation': return 1;
+      case 'Open': return 2;
+      case 'Under Investigation': return 3;
+      case 'Solved': return 4;
       default: return 1;
     }
   }
   
   function getStatusColor(status: string): string {
     switch (status) {
+      case 'Pending Confirmation': return 'bg-amber-500';
       case 'Open': return 'bg-blue-500';
       case 'Under Investigation': return 'bg-yellow-500';
       case 'Solved': return 'bg-emerald-500';
@@ -230,8 +232,17 @@
     }
   }
   
+  function formatReportId(id: string | null | undefined): string {
+    if (!id) return 'N/A';
+    // If it's already a short ID (like RPT-XXXXXX), return as is
+    if (id.includes('RPT-') && id.length <= 11) return id;
+    // Otherwise, show last 6 characters
+    return id.length > 6 ? `...${id.slice(-6)}` : id;
+  }
+  
   // Statistics
   $: totalReports = reports.length;
+  $: pendingConfirmationReports = reports.filter(r => r.status === 'Pending Confirmation').length;
   $: openReports = reports.filter(r => r.status === 'Open').length;
   $: investigatingReports = reports.filter(r => r.status === 'Under Investigation').length;
   $: solvedReports = reports.filter(r => r.status === 'Solved').length;
@@ -462,6 +473,34 @@
     } catch (error) {
       console.error('Error updating report:', error);
       alert('Error updating report');
+    }
+  }
+
+  async function confirmReport(report: Report) {
+    if (!report || report.status !== 'Pending Confirmation') return;
+    try {
+      const response = await fetch(`/api/reports?id=${report.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          status: 'Open',
+          updateNote: 'Report confirmed by officials'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        reports = reports.map(r => r.id === data.report.id ? data.report : r);
+        if (showReportModal && selectedReport?.id === data.report.id) {
+          selectedReport = data.report;
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.message || 'Failed to confirm report');
+      }
+    } catch (error) {
+      console.error('Error confirming report:', error);
+      alert('Error confirming report');
     }
   }
   
@@ -858,7 +897,7 @@
         <!-- Overview Tab -->
         <div in:fade={{ duration: 300 }}>
           <!-- Modern Statistics Cards -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
             <div class="group bg-white/90 backdrop-blur-xl p-6 rounded-2xl shadow-lg hover:shadow-xl border border-emerald-100/50 transition-all duration-300 transform hover:-translate-y-1">
               <div class="flex items-center justify-between mb-4">
                 <div class="w-14 h-14 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -870,6 +909,19 @@
               <p class="text-3xl font-bold text-gray-800 mb-1">{totalReports}</p>
               <p class="text-sm font-medium text-gray-600 mb-1">Total Reports</p>
               <p class="text-xs text-gray-500">All time records</p>
+            </div>
+
+            <div class="group bg-white/90 backdrop-blur-xl p-6 rounded-2xl shadow-lg hover:shadow-xl border border-amber-100/50 transition-all duration-300 transform hover:-translate-y-1">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-14 h-14 bg-gradient-to-br from-amber-100 to-amber-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg class="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
+              </div>
+              <p class="text-3xl font-bold text-amber-600 mb-1">{pendingConfirmationReports}</p>
+              <p class="text-sm font-medium text-gray-600 mb-1">Pending Confirmation</p>
+              <p class="text-xs text-gray-500">Awaiting official review</p>
             </div>
             
             <div class="group bg-white/90 backdrop-blur-xl p-6 rounded-2xl shadow-lg hover:shadow-xl border border-blue-100/50 transition-all duration-300 transform hover:-translate-y-1">
@@ -943,6 +995,124 @@
             </div>
           </div>
           
+          <!-- Pending Resident Reports Requiring Confirmation -->
+          {#if pendingConfirmationReports > 0}
+            <div class="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl shadow-lg p-6 lg:p-8">
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-xl font-bold text-gray-800">Pending Resident Reports</h3>
+                    <p class="text-sm text-gray-600">Reports awaiting official confirmation</p>
+                  </div>
+                </div>
+                <span class="px-4 py-2 bg-amber-500 text-white rounded-full text-sm font-bold shadow-md">
+                  {pendingConfirmationReports} {pendingConfirmationReports === 1 ? 'Report' : 'Reports'}
+                </span>
+              </div>
+              
+              <div class="space-y-4">
+                {#each reportViewModels.filter(({ base: report }) => report.status === 'Pending Confirmation') as { base: report, resident, evidence } (report.id)}
+                  <div class="bg-white rounded-xl p-5 border border-amber-200 hover:border-amber-300 transition-all duration-300 hover:shadow-md">
+                    <div class="flex items-start justify-between">
+                      <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                          <h4 class="text-lg font-semibold text-gray-800">{report.title}</h4>
+                          <span class="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                            Pending Confirmation
+                          </span>
+                        </div>
+                        
+                        {#if resident.isStructured}
+                          <div class="mb-3 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                            <p class="text-sm font-semibold text-gray-700 mb-1">
+                              <span class="text-emerald-700">Reporter:</span> {resident.reporter?.name || 'Anonymous Resident'}
+                            </p>
+                            {#if resident.reporter?.contact}
+                              <p class="text-xs text-gray-600">Contact: {resident.reporter.contact}</p>
+                            {/if}
+                            {#if resident.reporter?.address}
+                              <p class="text-xs text-gray-600">Address: {resident.reporter.address}</p>
+                            {/if}
+                            {#if resident.message}
+                              <p class="text-xs text-gray-700 mt-2 italic">"{resident.message}"</p>
+                            {/if}
+                          </div>
+                        {/if}
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                          <div>
+                            <span class="text-gray-500">Type:</span>
+                            <span class="ml-1 font-medium text-gray-800">{report.type}</span>
+                          </div>
+                          <div>
+                            <span class="text-gray-500">Location:</span>
+                            <span class="ml-1 font-medium text-gray-800">{report.location}</span>
+                          </div>
+                          <div>
+                            <span class="text-gray-500">Date:</span>
+                            <span class="ml-1 font-medium text-gray-800">{formatDate(report.date)}</span>
+                          </div>
+                          <div>
+                            <span class="text-gray-500">Priority:</span>
+                            <span class="ml-1 font-medium {report.priority === 'Critical' ? 'text-red-600' : report.priority === 'High' ? 'text-orange-600' : 'text-gray-800'}">{report.priority}</span>
+                          </div>
+                        </div>
+                        
+                        {#if evidence.media.length > 0}
+                          <div class="mt-3">
+                            <p class="text-xs text-gray-500 mb-2">Attachments: {evidence.media.length} {evidence.media.length === 1 ? 'file' : 'files'}</p>
+                            <div class="grid grid-cols-4 gap-2">
+                              {#each evidence.media.slice(0, 4) as media}
+                                <div class="relative">
+                                  {#if media.type === 'image'}
+                                    <img src={media.url} alt={media.name} class="w-full h-16 object-cover rounded border border-gray-200" loading="lazy" />
+                                  {:else}
+                                    <video src={media.url} class="w-full h-16 object-cover rounded border border-gray-200" controls preload="metadata">
+                                      <track kind="captions" />
+                                    </video>
+                                  {/if}
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      </div>
+                      
+                      <div class="flex flex-col gap-2 ml-4">
+                        <button 
+                          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                          on:click={() => confirmReport(report)}
+                          title="Confirm this report"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                          </svg>
+                          Confirm
+                        </button>
+                        <button 
+                          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                          on:click={() => viewReport(report)}
+                          title="View full details"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                          </svg>
+                          View
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          
           <!-- Recent Activity with Modern Card -->
           <div class="bg-white/90 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-lg border border-emerald-100/50">
             <div class="flex items-center justify-between mb-6">
@@ -969,9 +1139,9 @@
                 {#each reports.slice(0, 5) as report}
                   <div class="group flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-emerald-50/30 rounded-xl hover:from-emerald-50 hover:to-emerald-100/50 border border-gray-100 hover:border-emerald-200 transition-all duration-300 cursor-pointer transform hover:scale-[1.02]">
                     <div class="flex-1">
-                      <p class="text-sm font-semibold text-gray-800 mb-1">{report.id} - {report.title}</p>
+                      <p class="text-sm font-semibold text-gray-800 mb-1">{formatReportId(report.shortId || report.id)} - {report.title}</p>
                       <div class="flex items-center gap-3">
-                        <span class="text-xs font-medium {report.status === 'Open' ? 'text-blue-600' : report.status === 'Under Investigation' ? 'text-yellow-600' : 'text-emerald-600'}">
+                        <span class="text-xs font-medium {report.status === 'Pending Confirmation' ? 'text-amber-600' : report.status === 'Open' ? 'text-blue-600' : report.status === 'Under Investigation' ? 'text-yellow-600' : 'text-emerald-600'}">
                           {report.status}
                         </span>
                         <span class="text-xs text-gray-400">•</span>
@@ -1038,11 +1208,11 @@
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
                         <div class="flex items-center space-x-3 mb-3">
-                          <h3 class="text-lg font-semibold text-gray-800">{report.id} - {report.title}</h3>
+                          <h3 class="text-lg font-semibold text-gray-800">{formatReportId(report.shortId || report.id)} - {report.title}</h3>
                           <span class="px-3 py-1 text-xs font-medium rounded-full border {getPriorityColor(report.priority)}">
                             {report.priority}
                           </span>
-                          <span class="px-3 py-1 text-xs font-medium rounded-full {report.status === 'Open' ? 'bg-blue-100 text-blue-700' : report.status === 'Under Investigation' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}">
+                          <span class="px-3 py-1 text-xs font-medium rounded-full {report.status === 'Pending Confirmation' ? 'bg-amber-100 text-amber-700' : report.status === 'Open' ? 'bg-blue-100 text-blue-700' : report.status === 'Under Investigation' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}">
                             {report.status}
                           </span>
                         </div>
@@ -1160,6 +1330,18 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                           </svg>
                         </button>
+                        {#if report.status === 'Pending Confirmation'}
+                          <button 
+                            class="text-emerald-600 hover:text-emerald-700 p-2 rounded-lg hover:bg-emerald-50 transition-colors" 
+                            title="Confirm Report"
+                            aria-label="Confirm report"
+                            on:click={() => confirmReport(report)}
+                          >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                          </button>
+                        {/if}
                         <button 
                           class="text-indigo-600 hover:text-indigo-700 p-2 rounded-lg hover:bg-indigo-50 transition-colors" 
                           title="Edit Report"
@@ -1196,6 +1378,15 @@
             <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50">
               <h3 class="text-lg font-semibold text-gray-800 mb-4">Report Status Distribution</h3>
               <div class="space-y-4">
+                <div>
+                  <div class="flex justify-between mb-2">
+                    <span class="text-sm text-gray-600">Pending Confirmation</span>
+                    <span class="text-sm font-medium text-gray-800">{pendingConfirmationReports} ({totalReports > 0 ? ((pendingConfirmationReports / totalReports) * 100).toFixed(1) : 0}%)</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-amber-600 h-2 rounded-full" style="width: {totalReports > 0 ? (pendingConfirmationReports / totalReports) * 100 : 0}%"></div>
+                  </div>
+                </div>
                 <div>
                   <div class="flex justify-between mb-2">
                     <span class="text-sm text-gray-600">Open</span>
@@ -1557,7 +1748,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
         <div class="flex items-center justify-between mb-6">
-          <h2 class="text-2xl font-bold text-gray-800">{selectedReport.id} - {selectedReport.title}</h2>
+          <h2 class="text-2xl font-bold text-gray-800">{formatReportId(selectedReport.shortId || selectedReport.id)} - {selectedReport.title}</h2>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close modal"
@@ -1576,7 +1767,7 @@
               <div class="bg-gray-50 p-4 rounded-lg space-y-3">
                 <div class="flex justify-between">
                   <span class="text-gray-600">Status:</span>
-                  <span class="px-2 py-1 text-xs font-medium rounded-full {selectedReport.status === 'Open' ? 'bg-blue-100 text-blue-700' : selectedReport.status === 'Under Investigation' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}">
+                  <span class="px-2 py-1 text-xs font-medium rounded-full {selectedReport.status === 'Pending Confirmation' ? 'bg-amber-100 text-amber-700' : selectedReport.status === 'Open' ? 'bg-blue-100 text-blue-700' : selectedReport.status === 'Under Investigation' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}">
                     {selectedReport.status}
                   </span>
                 </div>
@@ -1688,6 +1879,14 @@
           >
             Close
           </button>
+          {#if selectedReport.status === 'Pending Confirmation'}
+            <button 
+              class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              on:click={() => selectedReport && confirmReport(selectedReport)}
+            >
+              Confirm Report
+            </button>
+          {/if}
           <button 
             class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             on:click={() => {
@@ -1750,6 +1949,7 @@
                 bind:value={editForm.status}
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               >
+                <option value="Pending Confirmation">Pending Confirmation</option>
                 <option value="Open">Open</option>
                 <option value="Under Investigation">Under Investigation</option>
                 <option value="Solved">Solved</option>

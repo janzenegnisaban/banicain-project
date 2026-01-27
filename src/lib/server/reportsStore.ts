@@ -142,7 +142,7 @@ export function seedIfEmpty() {
 	
 	const types = ['Theft', 'Assault', 'Fraud', 'Vandalism', 'Burglary', 'Traffic Incident', 'Noise Complaint', 'Suspicious Activity'];
 	const officers = ['Officer Smith', 'Officer Johnson', 'Officer Brown', 'Officer Davis', 'Officer Wilson', 'Unassigned'];
-	const statuses: ReportStatus[] = ['Open', 'Under Investigation', 'Solved'];
+	const statuses: ReportStatus[] = ['Pending Confirmation', 'Open', 'Under Investigation', 'Solved'];
 	const priorities: ReportPriority[] = ['Low', 'Medium', 'High', 'Critical'];
 	
 	// Create 15 diverse reports
