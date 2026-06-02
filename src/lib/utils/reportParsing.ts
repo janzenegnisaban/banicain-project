@@ -35,6 +35,12 @@ export type ResidentMetadataPayload = {
 		address?: string;
 		contact?: string;
 		typeOfReport?: string;
+		incidentDetails?: string;
+		witnessName?: string;
+		/** Whether the resident already told a barangay official before this submission. */
+		officialInformedStatus?: 'yes' | 'no';
+		/** Name of the official notified (when officialInformedStatus is yes). */
+		officialInformed?: string;
 	};
 	message?: string;
 	attachments?: Array<{ id: string; name: string; type: MediaType; size?: number }>;

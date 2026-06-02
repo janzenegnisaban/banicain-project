@@ -3,50 +3,50 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { sidebarCollapsed } from '$lib/stores/sidebar';
-  
+  import { signOut } from '$lib/utils/auth';
+  import type { SessionUser } from '$lib/types/user';
+
+  export let user: SessionUser | null = null;
+
   let currentTime = new Date();
   $: isCollapsed = $sidebarCollapsed;
-  
-  function goHome() {
-    goto('/');
-  }
-  
+  $: initials = user?.username
+    ? user.username
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'BS';
+
   const navItems = [
-    {
-      title: 'Dashboard',
-      icon: '📊',
-      href: '/dashboard',
-      description: 'Overview and statistics'
-    },
-    {
-      title: 'Crime Reports',
-      icon: '📋',
-      href: '/reports',
-      description: 'Manage crime reports'
-    },
-    {
-      title: 'Analytics',
-      icon: '📈',
-      href: '/analytics',
-      description: 'Data analysis and insights'
-    }
+    { title: 'Dashboard', icon: '📊', href: '/dashboard', description: 'Overview and statistics' },
+    { title: 'Incident Reports', icon: '📋', href: '/reports', description: 'Manage incident reports' },
+    { title: 'Analytics', icon: '📈', href: '/analytics', description: 'Data analysis and insights' },
+    ...(user?.role === 'Administrator' || user?.role === 'Barangay Captain'
+      ? [{ title: 'Users', icon: '👥', href: '/users', description: 'Manage team accounts' }]
+      : [])
   ];
-  
+
   onMount(() => {
-    // Update time every second
     const timeInterval = setInterval(() => {
       currentTime = new Date();
     }, 1000);
-    
-    return () => {
-      clearInterval(timeInterval);
-    };
+    return () => clearInterval(timeInterval);
   });
-  
-  function toggleSidebar() {
-    sidebarCollapsed.update(collapsed => !collapsed);
+
+  function goHome() {
+    goto('/');
   }
-  
+
+  function toggleSidebar() {
+    sidebarCollapsed.update((collapsed) => !collapsed);
+  }
+
+  async function handleLogout() {
+    await signOut('/login?role=officer');
+  }
+
   function formatTime(date: Date) {
     return date.toLocaleTimeString('en-US', {
       hour12: true,
@@ -55,7 +55,7 @@
       second: '2-digit'
     });
   }
-  
+
   function formatDate(date: Date) {
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
@@ -67,28 +67,26 @@
 </script>
 
 <div class="sidebar-container fixed left-0 top-0 h-full bg-white/90 backdrop-blur-xl border-r border-emerald-200/50 shadow-xl transition-all duration-500 z-50 {isCollapsed ? 'w-24' : 'w-80'} lg:translate-x-0 {isCollapsed ? '-translate-x-full lg:translate-x-0' : ''} flex flex-col">
-  <!-- Header -->
   <div class="p-5 border-b border-emerald-200/30">
     <div class="flex items-center {isCollapsed ? 'justify-center' : 'justify-between'}">
       {#if !isCollapsed}
-        <button 
+        <button
           on:click={goHome}
           class="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer flex-shrink-0"
           aria-label="Go to home page"
         >
           <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-10 h-10" />
-          <h2 class="text-xl font-bold text-emerald-700">B-SAFE</h2>
+          <div class="text-left">
+            <h2 class="text-xl font-bold text-emerald-700 leading-tight">B-SAFE</h2>
+            <p class="text-[10px] uppercase tracking-wider text-emerald-500/80">Official Portal</p>
+          </div>
         </button>
       {:else}
-        <button 
-          on:click={goHome}
-          class="hover:opacity-80 transition-opacity cursor-pointer"
-          aria-label="Go to home page"
-        >
+        <button on:click={goHome} class="hover:opacity-80 transition-opacity cursor-pointer" aria-label="Go to home page">
           <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-10 h-10" />
         </button>
       {/if}
-      
+
       {#if !isCollapsed}
         <button
           on:click={toggleSidebar}
@@ -112,8 +110,7 @@
       {/if}
     </div>
   </div>
-  
-  <!-- Time Display -->
+
   <div class="p-5 border-b border-emerald-200/30">
     {#if !isCollapsed}
       <div class="text-center">
@@ -127,13 +124,12 @@
       </div>
     {/if}
   </div>
-  
-  <!-- Navigation -->
+
   <nav class="flex-1 p-5 space-y-3 overflow-y-auto">
     {#each navItems as item}
       <a
         href={item.href}
-        class="nav-item flex items-center {isCollapsed ? 'justify-center' : ''} p-4 rounded-xl transition-all duration-300 hover:bg-emerald-50 hover:shadow-md group {$page.url.pathname === item.href ? 'bg-emerald-100 shadow-md' : ''}"
+        class="nav-item flex items-center {isCollapsed ? 'justify-center' : ''} p-4 rounded-xl transition-all duration-300 hover:bg-emerald-50 hover:shadow-md group {$page.url.pathname === item.href ? 'bg-emerald-100 shadow-md ring-1 ring-emerald-200/60' : ''}"
       >
         <div class="text-2xl {isCollapsed ? '' : 'mr-4'} group-hover:scale-110 transition-transform duration-200 flex-shrink-0">
           {item.icon}
@@ -143,53 +139,44 @@
             <div class="font-semibold text-base text-gray-700 group-hover:text-emerald-700 transition-colors duration-200">
               {item.title}
             </div>
-            <div class="text-xs text-gray-500 mt-0.5">
-              {item.description}
-            </div>
+            <div class="text-xs text-gray-500 mt-0.5">{item.description}</div>
           </div>
         {/if}
       </a>
     {/each}
   </nav>
-  
-  <!-- Footer -->
+
   <div class="p-5 border-t border-emerald-200/30 space-y-3">
     {#if !isCollapsed}
       <div class="flex items-center space-x-4 p-4 rounded-xl bg-emerald-50">
-        <div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-          <span class="text-white text-base font-bold">A</span>
+        <div class="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+          <span class="text-white text-sm font-bold">{initials}</span>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="font-semibold text-gray-700">Admin User</div>
-          <div class="text-xs text-gray-500 mt-0.5">Administrator</div>
+          <div class="font-semibold text-gray-700 truncate">{user?.username ?? 'Official'}</div>
+          <div class="text-xs text-gray-500 mt-0.5 truncate">{user?.role ?? 'Barangay Official'}</div>
         </div>
       </div>
-      
-      <button 
+
+      <button
         class="w-full flex items-center justify-center space-x-3 p-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 transition-colors duration-300 font-medium"
-        on:click={() => {
-          localStorage.removeItem('user');
-          window.location.href = '/login';
-        }}
+        on:click={handleLogout}
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
         </svg>
-        <span>Logout</span>
+        <span>Sign Out</span>
       </button>
     {:else}
       <div class="space-y-3">
-        <div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center mx-auto">
-          <span class="text-white text-base font-bold">A</span>
+        <div class="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+          <span class="text-white text-xs font-bold">{initials}</span>
         </div>
-        <button 
+        <button
           class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center mx-auto hover:bg-red-600 transition-colors duration-300"
-          on:click={() => {
-            localStorage.removeItem('user');
-            window.location.href = '/login';
-          }}
-          aria-label="Logout"
-          title="Logout"
+          on:click={handleLogout}
+          aria-label="Sign out"
+          title="Sign out"
         >
           <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
@@ -200,10 +187,9 @@
   </div>
 </div>
 
-<!-- Overlay for mobile -->
 {#if !isCollapsed}
-  <div 
-    class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden" 
+  <div
+    class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
     on:click={toggleSidebar}
     on:keydown={(e) => e.key === 'Enter' && toggleSidebar()}
     role="button"
@@ -212,9 +198,8 @@
   ></div>
 {/if}
 
-<!-- Mobile menu button -->
 <button
-  class="fixed top-4 left-4 z-50 lg:hidden p-2 bg-emerald-600 text-white rounded-lg shadow-lg"
+  class="fixed top-4 left-4 z-50 lg:hidden p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-700 transition-colors"
   on:click={toggleSidebar}
   aria-label="Toggle sidebar menu"
 >
@@ -227,12 +212,12 @@
   .sidebar-container {
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
+
   .nav-item {
     position: relative;
     overflow: hidden;
   }
-  
+
   .nav-item::before {
     content: '';
     position: absolute;
@@ -243,16 +228,16 @@
     background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.1), transparent);
     transition: left 0.5s;
   }
-  
+
   .nav-item:hover::before {
     left: 100%;
   }
-  
+
   @media (max-width: 1024px) {
     .sidebar-container {
       transform: translateX(-100%);
     }
-    
+
     .sidebar-container:not(.collapsed) {
       transform: translateX(0);
     }

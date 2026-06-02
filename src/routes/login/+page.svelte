@@ -7,7 +7,7 @@
 
 	type PortalRole = 'resident' | 'officer';
 
-	const officerRoles = ['Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
+	const officerRoles = ['Barangay Captain', 'Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
 
 	let role: PortalRole = 'officer';
 	let email = '';

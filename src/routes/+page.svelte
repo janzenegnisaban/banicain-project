@@ -98,6 +98,11 @@ function handleResidentEntry() {
   showRoleChooser = false;
   goto('/residents');
 }
+
+function handleGuestReport() {
+  showRoleChooser = false;
+  goto('/residents');
+}
 </script>
 
 <div class="landing-page min-h-screen relative overflow-hidden">
@@ -181,6 +186,14 @@ function handleResidentEntry() {
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
               </svg>
+            </button>
+            
+            <button 
+              type="button"
+              on:click={handleGuestReport}
+              class="px-8 py-4 bg-emerald-500 text-white font-bold text-lg rounded-full shadow-2xl hover:bg-emerald-600 transition-all duration-300 transform hover:scale-105"
+            >
+              Report as Guest
             </button>
             
             <button 
@@ -355,6 +368,7 @@ function handleResidentEntry() {
         <div>
           <h3 class="text-white font-bold text-lg mb-4">Quick Links</h3>
           <ul class="space-y-2">
+            <li><a href="/qr" class="hover:text-white transition">Scan QR to Report</a></li>
             <li><a href="/residents" class="hover:text-white transition">Report Incident</a></li>
             <li><a href="/login" class="hover:text-white transition">Login</a></li>
             <li><a href="/signup" class="hover:text-white transition">Sign Up</a></li>
@@ -386,7 +400,7 @@ function handleResidentEntry() {
               hoverColor="hover:from-blue-600 hover:to-indigo-600"
             />
           </div>
-          <div on:click={() => { goto('/login'); showRoleChooser = false; }} class="cursor-pointer">
+          <div on:click={() => { goto('/login?role=officer'); showRoleChooser = false; }} class="cursor-pointer">
             <ActionCard
               title="Barangay Official"
               description="Manage reports, investigate cases, and serve the community"

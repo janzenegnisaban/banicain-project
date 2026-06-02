@@ -1,9 +1,12 @@
 <script lang="ts">
-  import Sidebar from '$lib/components/Sidebar.svelte';
+  import OfficialLayout from '$lib/components/OfficialLayout.svelte';
+  import ResidentSubmissionPanel from '$lib/components/ResidentSubmissionPanel.svelte';
+  import PriorityBadge from '$lib/components/PriorityBadge.svelte';
+  import { FIRST_RESPONDER_UNITS, LABELS } from '$lib/constants/barangay';
   import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { goto } from '$app/navigation';
-  import { sidebarCollapsed } from '$lib/stores/sidebar';
+  import { authorizedFetch } from '$lib/utils/auth';
   import { parseEvidenceEntries, parseResidentMetadata, buildResidentMetadata, createMediaAttachmentPayload, serializeMediaAttachment, summarizeMediaAttachment } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
   import { jsPDF } from 'jspdf';
@@ -266,6 +269,10 @@
   let residentFilePreviewUrls: string[] = [];
   let isSubmittingResident = false;
 
+  let progressNote = '';
+  let firstResponderUnit = '';
+  let isSubmittingProgress = false;
+
   const reportTypes = [
     'Theft', 
     'Fraud', 
@@ -478,7 +485,7 @@
         victims: []
       };
 
-      const response = await fetch('/api/reports', {
+      const response = await authorizedFetch('/api/reports', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
@@ -565,7 +572,7 @@
 
   async function hydrateReportsFromApi() {
     try {
-      const res = await fetch('/api/reports');
+      const res = await authorizedFetch('/api/reports');
       const data: { reports?: Report[] } = await res.json();
       if (data?.reports) {
         const incomingIds = new Set(data.reports.map(report => report.id));
@@ -683,6 +690,8 @@
   function closeReportModal() {
     showReportModal = false;
     selectedReport = null;
+    progressNote = '';
+    firstResponderUnit = '';
   }
 
   $: selectedEvidence = selectedReport ? parseEvidenceEntries(selectedReport.evidence ?? []) : { media: [], text: [] };
@@ -783,6 +792,14 @@
 
   async function saveReport() {
     if (isSaving) return;
+
+    const hasRespondents = editForm.suspects.some((s) => s.trim().length > 0);
+    const hasComplainants = editForm.victims.some((v) => v.trim().length > 0);
+    if (!hasRespondents || !hasComplainants) {
+      alert('Please add at least one Respondent and one Complainant before saving.');
+      return;
+    }
+
     isSaving = true;
 
     try {
@@ -834,14 +851,14 @@
       let response: Response;
       if (editingReport) {
         // Update existing report
-        response = await fetch(`/api/reports?id=${editingReport.id}`, {
+        response = await authorizedFetch(`/api/reports?id=${editingReport.id}`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
         // Create new report
-        response = await fetch('/api/reports', {
+        response = await authorizedFetch('/api/reports', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload)
@@ -871,15 +888,48 @@
     }
   }
 
+  async function submitProgressReport(report: Report) {
+    if (!report || !progressNote.trim()) return;
+    isSubmittingProgress = true;
+    try {
+      const noteParts = [`Progress report: ${progressNote.trim()}`];
+      if (firstResponderUnit) {
+        noteParts.push(`${LABELS.firstResponder}: ${firstResponderUnit}`);
+      }
+      const response = await authorizedFetch(`/api/reports?id=${report.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ updateNote: noteParts.join(' | ') })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        upsertReport(data.report);
+        if (showReportModal && selectedReport?.id === data.report.id) {
+          selectedReport = data.report;
+        }
+        progressNote = '';
+        firstResponderUnit = '';
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.message || 'Failed to add progress report');
+      }
+    } catch (error) {
+      console.error('Error submitting progress report:', error);
+      alert('Error submitting progress report');
+    } finally {
+      isSubmittingProgress = false;
+    }
+  }
+
   async function confirmReport(report: Report) {
     if (!report || report.status !== 'Pending Confirmation') return;
     try {
-      const response = await fetch(`/api/reports?id=${report.id}`, {
+      const response = await authorizedFetch(`/api/reports?id=${report.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           status: 'Open',
-          updateNote: 'Report confirmed by officials'
+          updateNote: 'Progress report: Report confirmed by officials'
         })
       });
 
@@ -914,7 +964,7 @@
     const reportId = reportToDelete.id;
     
     try {
-      const response = await fetch(`/api/reports?id=${reportId}`, {
+      const response = await authorizedFetch(`/api/reports?id=${reportId}`, {
         method: 'DELETE'
       });
       
@@ -1213,20 +1263,20 @@
   }
 </script>
 
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
-  <Sidebar />
-  
-  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6">
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-emerald-600 via-primary-600 to-teal-600 p-8 rounded-2xl shadow-2xl mb-8 relative overflow-hidden">
-      <div class="absolute top-0 right-0 w-80 h-80 -mt-16 -mr-16 bg-emerald-400 opacity-20 rounded-full blur-3xl animate-float"></div>
-      <div class="absolute bottom-0 left-0 w-64 h-64 -mb-12 -ml-12 bg-teal-400 opacity-20 rounded-full blur-3xl animate-float" style="animation-delay: 1s;"></div>
-      
-      <div class="relative z-10">
-        <h1 class="text-4xl font-bold text-white mb-2">Crime Reports Management</h1>
-        <p class="text-emerald-100 text-lg">Comprehensive case management and investigation tracking system</p>
-      </div>
-    </div>
+<OfficialLayout
+  title="Incident Reports Management"
+  subtitle="Comprehensive case management and investigation tracking system"
+  variant="gradient"
+>
+  <svelte:fragment slot="actions">
+    <button
+      type="button"
+      class="inline-flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-sm font-medium rounded-xl transition-all"
+      on:click={() => goto('/dashboard')}
+    >
+      Dashboard
+    </button>
+  </svelte:fragment>
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
@@ -1424,13 +1474,12 @@
           <div class="bg-white rounded-xl p-6 border border-gray-100 hover:border-indigo-200 transition-all duration-300 hover:shadow-lg group" in:fly={{ y: 20, duration: 300, delay: 100 }}>
             <div class="flex items-start justify-between mb-4">
               <div class="flex-1">
-                <div class="flex items-center space-x-3 mb-3">
+                <div class="flex items-center flex-wrap gap-x-3 gap-y-2 mb-3">
                   <h3 class="text-xl font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                     {formatReportId(report.shortId || report.id)} - {report.title}
+                    {report.title}
                   </h3>
-                  <span class="px-3 py-1 text-xs font-medium rounded-full border {getPriorityColor(report.priority)}">
-                    {report.priority}
-                  </span>
+                  <span class="text-xs font-mono text-gray-500">Ref {formatReportId(report.shortId || report.id)}</span>
+                  <PriorityBadge priority={report.priority} size="sm" />
                   <span class="px-3 py-1 text-xs font-medium rounded-full border {getStatusColor(report.status)}">
                     {report.status}
                   </span>
@@ -1687,16 +1736,18 @@
         </div>
       </div>
     </div>
-  </div>
-</div>
+</OfficialLayout>
 
 <!-- Report Detail Modal -->
 {#if showReportModal && selectedReport}
   <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" in:fade={{ duration: 200 }}>
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" in:scale={{ duration: 300 }}>
       <div class="p-8">
-        <div class="flex items-center justify-between mb-6">
-           <h2 class="text-2xl font-bold text-gray-800">{formatReportId(selectedReport.shortId || selectedReport.id)} - {selectedReport.title}</h2>
+        <div class="flex items-start justify-between mb-6 gap-4">
+          <div class="min-w-0">
+            <h2 class="text-2xl font-bold text-gray-800">{selectedReport.title}</h2>
+            <p class="text-sm text-gray-500 mt-1">Ref {formatReportId(selectedReport.shortId || selectedReport.id)}</p>
+          </div>
           <button 
             class="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Close modal"
@@ -1751,21 +1802,7 @@
             </div>
 
             {#if selectedResidentDetails?.isStructured}
-              <div>
-                <h3 class="text-lg font-semibold text-gray-800 mb-3">Resident Submission</h3>
-                <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-lg space-y-2">
-                  <p class="text-sm text-gray-700"><span class="font-semibold">Name:</span> {selectedResidentDetails.reporter?.name || 'Anonymous Resident'}</p>
-                  {#if selectedResidentDetails.reporter?.contact}
-                    <p class="text-sm text-gray-700"><span class="font-semibold">Contact:</span> {selectedResidentDetails.reporter?.contact}</p>
-                  {/if}
-                  {#if selectedResidentDetails.reporter?.address}
-                    <p class="text-sm text-gray-700"><span class="font-semibold">Address:</span> {selectedResidentDetails.reporter?.address}</p>
-                  {/if}
-                  {#if selectedResidentDetails.message}
-                    <p class="text-sm text-gray-600 italic">"{selectedResidentDetails.message}"</p>
-                  {/if}
-                </div>
-              </div>
+              <ResidentSubmissionPanel details={selectedResidentDetails} />
             {/if}
 
             {#if selectedEvidence.text.length}
@@ -1825,10 +1862,10 @@
             {/if}
 
             <div>
-              <h3 class="text-lg font-semibold text-gray-800 mb-3">Suspects & Victims</h3>
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">Respondents & Complainants</h3>
               <div class="bg-gray-50 p-4 rounded-lg space-y-4">
                 <div>
-                  <div class="text-sm font-medium text-gray-700 mb-2">Suspects:</div>
+                  <div class="text-sm font-medium text-gray-700 mb-2">Respondents:</div>
                   <div class="text-gray-600">
                     {#each selectedReport.suspects as suspect}
                       <div class="mb-1">• {suspect}</div>
@@ -1836,7 +1873,7 @@
                   </div>
                 </div>
                 <div>
-                  <div class="text-sm font-medium text-gray-700 mb-2">Victims:</div>
+                  <div class="text-sm font-medium text-gray-700 mb-2">Complainants:</div>
                   <div class="text-gray-600">
                     {#each selectedReport.victims as victim}
                       <div class="mb-1">• {victim}</div>
@@ -1851,7 +1888,43 @@
             </div>
 
             <div>
-              <h3 class="text-lg font-semibold text-gray-800 mb-3">Case Updates</h3>
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">{LABELS.progressReport}s</h3>
+              {#if selectedReport.status !== 'Pending Confirmation' && selectedReport.status !== 'Solved'}
+                <div class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-3">
+                  <p class="text-sm text-gray-600">Add an update visible to residents tracking this report.</p>
+                  <div>
+                    <label for="progress-note" class="block text-sm font-medium text-gray-700 mb-1">Update details *</label>
+                    <textarea
+                      id="progress-note"
+                      bind:value={progressNote}
+                      rows="2"
+                      placeholder="Describe actions taken, findings, or next steps…"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label for="first-responder" class="block text-sm font-medium text-gray-700 mb-1">{LABELS.firstResponder}</label>
+                    <select
+                      id="first-responder"
+                      bind:value={firstResponderUnit}
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select unit (optional)</option>
+                      {#each FIRST_RESPONDER_UNITS as unit}
+                        <option value={unit}>{unit}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    disabled={isSubmittingProgress || !progressNote.trim()}
+                    on:click={() => selectedReport && submitProgressReport(selectedReport)}
+                  >
+                    {isSubmittingProgress ? 'Saving…' : 'Add progress report'}
+                  </button>
+                </div>
+              {/if}
               <div class="space-y-3 max-h-64 overflow-y-auto">
                 {#each selectedReport.updates as update}
                   <div class="bg-gray-50 p-3 rounded-lg">
@@ -1860,6 +1933,8 @@
                     </div>
                     <p class="text-sm text-gray-600">{update.note}</p>
                   </div>
+                {:else}
+                  <p class="text-sm text-gray-500 italic">No progress reports yet.</p>
                 {/each}
               </div>
             </div>
@@ -2214,13 +2289,13 @@
           <!-- Suspects -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label for="suspects-list" class="block text-sm font-medium text-gray-700">Suspects</label>
+              <label for="suspects-list" class="block text-sm font-medium text-gray-700">Respondents *</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
                 on:click={() => addArrayItem('suspects')}
               >
-                + Add Suspect
+                + Add Respondent
               </button>
             </div>
             <div id="suspects-list">
@@ -2231,7 +2306,7 @@
                     type="text" 
                     bind:value={editForm.suspects[index]}
                     class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    placeholder="Suspect name"
+                    placeholder="Respondent name"
                   />
                   <button 
                     type="button"
@@ -2249,13 +2324,13 @@
           <!-- Victims -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label for="victims-list" class="block text-sm font-medium text-gray-700">Victims</label>
+              <label for="victims-list" class="block text-sm font-medium text-gray-700">Complainants *</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
                 on:click={() => addArrayItem('victims')}
               >
-                + Add Victim
+                + Add Complainant
               </button>
             </div>
             <div id="victims-list">
@@ -2380,7 +2455,7 @@
           <button 
             class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             on:click={saveReport}
-            disabled={isSaving || !editForm.title || !editForm.type}
+            disabled={isSaving || !editForm.title || !editForm.type || !editForm.suspects.some(s => s.trim()) || !editForm.victims.some(v => v.trim())}
           >
             {#if isSaving}
               <span class="flex items-center">

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Sidebar from '$lib/components/Sidebar.svelte';
+  import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-  import { sidebarCollapsed } from '$lib/stores/sidebar';
+  import { authorizedFetch } from '$lib/utils/auth';
 
   type User = {
     id: string;
@@ -26,7 +26,7 @@
   let statusFilter = 'All';
   let isSaving = false;
 
-  const roles = ['Resident', 'Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator'];
+  const roles = ['Resident', 'Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator', 'Barangay Captain'];
   const statuses = ['All', 'Active', 'Inactive'];
 
   // Form state
@@ -46,7 +46,7 @@
   async function fetchUsers() {
     isLoading = true;
     try {
-      const res = await fetch('/api/users');
+      const res = await authorizedFetch('/api/users');
       const data = await res.json();
       if (data.error) {
         console.error('Error fetching users:', data.error);
@@ -132,13 +132,13 @@
 
       let response: Response;
       if (editingUser) {
-        response = await fetch(`/api/users?id=${editingUser.id}`, {
+        response = await authorizedFetch(`/api/users?id=${editingUser.id}`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
-        response = await fetch('/api/users', {
+        response = await authorizedFetch('/api/users', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload)
@@ -169,7 +169,7 @@
     if (!deletingUser) return;
 
     try {
-      const response = await fetch(`/api/users?id=${deletingUser.id}`, {
+      const response = await authorizedFetch(`/api/users?id=${deletingUser.id}`, {
         method: 'DELETE'
       });
 
@@ -189,6 +189,7 @@
 
   function getRoleColor(role: string) {
     const colors: Record<string, string> = {
+      'Barangay Captain': 'bg-red-100 text-red-800 border-red-200',
       'Administrator': 'bg-red-100 text-red-700 border-red-200',
       'Police Officer': 'bg-indigo-100 text-indigo-700 border-indigo-200',
       'Police Chief': 'bg-purple-100 text-purple-700 border-purple-200',
@@ -218,34 +219,27 @@
   $: totalUsers = users.length;
   $: activeUsers = users.filter(u => u.is_active).length;
   $: inactiveUsers = users.filter(u => !u.is_active).length;
-  $: adminUsers = users.filter(u => u.role === 'Administrator').length;
+  $: adminUsers = users.filter(u => u.role === 'Administrator' || u.role === 'Barangay Captain').length;
 </script>
 
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
-  <Sidebar />
-  
-  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6">
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-emerald-600 via-primary-600 to-teal-600 p-8 rounded-2xl shadow-2xl mb-8 relative overflow-hidden">
-      <div class="absolute top-0 right-0 w-80 h-80 -mt-16 -mr-16 bg-emerald-400 opacity-20 rounded-full blur-3xl animate-float"></div>
-      <div class="absolute bottom-0 left-0 w-64 h-64 -mb-12 -ml-12 bg-teal-400 opacity-20 rounded-full blur-3xl animate-float" style="animation-delay: 1s;"></div>
-      
-      <div class="relative z-10 flex justify-between items-center">
-        <div>
-          <h1 class="text-4xl font-bold text-white mb-2">User Management</h1>
-          <p class="text-emerald-100 text-lg">Add, edit, or delete users and manage roles</p>
-        </div>
-        <button 
-          class="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 flex items-center space-x-2"
-          on:click={openAddModal}
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-          </svg>
-          <span>Add User</span>
-        </button>
-      </div>
-    </div>
+<OfficialLayout
+  title="User Management"
+  subtitle="Add, edit, or delete users and manage roles"
+  variant="gradient"
+  requireAdmin={true}
+>
+  <svelte:fragment slot="actions">
+    <button
+      type="button"
+      class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold rounded-xl transition-all shadow-sm"
+      on:click={openAddModal}
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+      </svg>
+      Add User
+    </button>
+  </svelte:fragment>
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -434,8 +428,7 @@
         <p class="text-sm text-gray-600">Showing {filteredUsers.length} of {totalUsers} users</p>
       </div>
     </div>
-  </div>
-</div>
+</OfficialLayout>
 
 <!-- Add/Edit User Modal -->
 {#if showAddModal || showEditModal}

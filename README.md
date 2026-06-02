@@ -1,163 +1,332 @@
-# B-SAFE – Barangay Secure And Fast Engagement
+# B-SAFE — Barangay Secure And Fast Engagement
 
-Modern SvelteKit platform that helps Barangay East Bajac-Bajac residents submit incident reports and allows local officials to triage, investigate, and communicate outcomes in real time. This README is written for incoming contributors so you can understand the moving parts before touching code.
+**Community incident reporting and case management for Brgy. Banicain, Olongapo City, Zambales.**
 
----
-
-## 1. Product Overview
-
-- **Audience**  
-  - Residents submit reports, upload evidence, and track progress.  
-  - Officials (admin, police, analysts) manage workload, monitor analytics, and coordinate responses.
-
-- **Core Pillars**  
-  - **Frictionless intake** via public-facing landing, signup, login, and resident portal.  
-  - **Command center** for officials: dashboard, reports, analytics, team, and settings.  
-  - **Realtime awareness** powered by server-sent events (SSE) and animated UI cues.  
-  - **Trust & transparency** with clear progress indicators, status modals, and notifications.
-
-- **Tech Stack**  
-  - SvelteKit + Vite + TypeScript
-  - TailwindCSS for styling, DaisyUI-inspired components
-  - Supabase client bootstrap (optional integrations)
-  - In-memory stores for reports & verification (swap with DB in production)
+This document serves as a **user manual for demos and presentations**, plus a short technical reference for developers.
 
 ---
 
-## 2. Quick Start
+## Table of Contents
+
+1. [What is B-SAFE?](#1-what-is-b-safe)
+2. [Demo Setup (Presenters)](#2-demo-setup-presenters)
+3. [Demo Login Accounts](#3-demo-login-accounts)
+4. [User Manual — Residents](#4-user-manual--residents)
+5. [User Manual — Barangay Officials](#5-user-manual--barangay-officials)
+6. [Incident Report Lifecycle](#6-incident-report-lifecycle)
+7. [QR Code Access](#7-qr-code-access)
+8. [Roles & Permissions](#8-roles--permissions)
+9. [Presentation Script (Suggested Flow)](#9-presentation-script-suggested-flow)
+10. [Testing Status](#10-testing-status)
+11. [Developer Reference](#11-developer-reference)
+12. [Troubleshooting](#12-troubleshooting)
+
+---
+
+## 1. What is B-SAFE?
+
+B-SAFE helps **residents** report incidents (theft, disputes, accidents, etc.) and lets **barangay officials** review, confirm, investigate, and update cases — with optional photo/video evidence.
+
+| Audience | What they can do |
+|----------|------------------|
+| **Residents (guest or signed-in)** | Submit incident reports, attach evidence, track status when logged in |
+| **Barangay officials** | View all reports, confirm submissions, add progress updates, manage cases |
+| **Administrators / Barangay Captain** | Everything above + user management |
+
+---
+
+## 2. Demo Setup (Presenters)
+
+### Start the application
 
 ```sh
-npm install          # grab dependencies
-npm run dev          # start SvelteKit dev server on http://localhost:5173
-npm run test         # run Vitest UI specs (see src/routes/page.svelte.spec.ts)
-npm run build        # create production bundle
-npm run preview      # preview built app locally
+npm install
+npm run dev
 ```
 
-Environment variables: none required for the demo in-memory mode. When wiring real email/Supabase adapters, create a `.env` (see `svelte.config.js` for adapter hooks).
+Open: **http://localhost:3000**
+
+> The dev server runs on port **3000** (not 5173).
+
+### Environment (Supabase)
+
+Create a `.env` file with your Supabase project keys:
+
+```env
+PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### Reset demo accounts (optional)
+
+If test logins fail, recreate all role accounts:
+
+```
+GET http://localhost:3000/api/seed/accounts
+```
+
+Or open that URL in the browser while the dev server is running.
 
 ---
 
-## 3. Project Structure (what you will touch most)
+## 3. Demo Login Accounts
+
+Use these accounts during your presentation. **For development/demo only — do not use in production.**
+
+| Role | Email | Password | After login goes to |
+|------|-------|----------|---------------------|
+| **Resident** | `resident@bsafe.local` | `ResidentSecure!1` | `/residents/dashboard` |
+| **Barangay Captain** | `captain@bsafe.local` | `CaptainSecure!1` | `/dashboard` |
+| **Administrator** | `admin@bsafe.local` | `AdminSecure!1` | `/dashboard` |
+| **Police Chief** | `chief@bsafe.local` | `ChiefSecure!1` | `/dashboard` |
+| **Crime Analyst** | `analyst@bsafe.local` | `AnalystSecure!1` | `/dashboard` |
+| **Police Officer** | `officer1@bsafe.local` | `OfficerSecure!1` | `/dashboard` |
+
+### Login URLs
+
+| User type | URL |
+|-----------|-----|
+| Resident | http://localhost:3000/login?role=resident |
+| Official | http://localhost:3000/login?role=officer |
+
+---
+
+## 4. User Manual — Residents
+
+### 4.1 Guest reporting (no account)
+
+1. Go to **http://localhost:3000** → click **Get Started** → choose **Resident**  
+   **Or** scan/open **http://localhost:3000/qr**
+2. You land on **Submit Incident Report** (`/residents`).
+3. A banner shows: *“Reporting as guest”* — the report can be submitted but **cannot be tracked later** without an account.
+
+### 4.2 Three-step report form
+
+| Step | Section | What to fill in |
+|------|---------|-----------------|
+| **1** | Your information | Name, mobile number, location (quick-select or type address in Brgy. Banicain) |
+| **2** | Incident details | Incident type, incident details, witness (optional), **official informed (yes/no)** |
+| **3** | Notes & evidence | Required notes, optional photo/video attachments |
+
+**Important fields:**
+
+- **Incident type** — auto-suggests priority (e.g. Violence → Critical).
+- **Did you already inform a barangay official?**
+  - **Yes** → enter the official’s name (required).
+  - **No** → report is treated as a first-time submission via B-SAFE.
+- **Notes** — required for all submissions.
+
+4. Click **Submit incident report**.
+5. Success screen shows workflow steps: *Submitted → Confirmed → Investigating → Resolved*.
+
+### 4.3 Signed-in resident (track reports)
+
+1. Sign up or log in at `/login?role=resident`.
+2. Submit reports at `/residents` — they link to your account.
+3. Open **My Reports** at `/residents/dashboard` to:
+   - See status and priority badges
+   - View progress timeline
+   - Read official progress updates
+
+### 4.4 Tips for presenters
+
+- Use a **Banicain address** (e.g. from the location dropdown) or validation will fail.
+- Mobile number must be Philippine format: `09XXXXXXXXX` or `+639XXXXXXXXX`.
+- Guest demo: submit once, then log in as an official to show the new **Pending Confirmation** report.
+
+---
+
+## 5. User Manual — Barangay Officials
+
+After logging in at `/login?role=officer`, use the sidebar:
+
+| Page | Purpose |
+|------|---------|
+| **Dashboard** | Overview, quick stats, recent activity |
+| **Incident Reports** | Full list, filters, confirm/edit/delete cases |
+| **Analytics** | Trends, incident types, PDF exports |
+| **Users** | Manage accounts *(Administrator & Barangay Captain only)* |
+| **Settings** | System preferences |
+
+### 5.1 Review a resident submission
+
+1. Go to **Incident Reports** (`/reports`).
+2. Find a report with status **Pending Confirmation**.
+3. Click to open the detail modal:
+   - **Title** is shown first; reference ID is secondary.
+   - **Resident Submission** panel shows reporter info, incident details, witness, and whether they already informed an official.
+   - View attached photos/videos if any.
+
+### 5.2 Confirm a report
+
+1. In the detail modal, click **Confirm Report**.
+2. Status changes from **Pending Confirmation** → **Open**.
+3. A progress note is added automatically.
+
+### 5.3 Add a progress report
+
+1. Open a report that is **Open** or **Under Investigation**.
+2. In the **Progress Reports** section:
+   - Enter update details (required).
+   - Optionally select **First Responder** (BPSO, BPOT, Rescue, etc.).
+3. Click **Add progress report**.
+4. Signed-in residents see these updates on their dashboard.
+
+### 5.4 Edit a case
+
+1. Click **Edit Case** in the modal (or from the list).
+2. Update fields including **Respondents** and **Complainants** (at least one of each required when saving).
+3. Save changes.
+
+### 5.5 Analytics & exports
+
+- Open **Analytics** for incident trends and type breakdown.
+- Export **Analytical** or **Prediction** reports as PDF from the analytics page.
+
+---
+
+## 6. Incident Report Lifecycle
+
+```
+Resident submits
+       ↓
+Pending Confirmation  ←  Officials review resident submission
+       ↓
+      Open            ←  Official clicks "Confirm Report"
+       ↓
+Under Investigation ←  Officials add progress reports
+       ↓
+     Solved          ←  Case closed / resolved
+```
+
+Residents (signed-in) and officials both see this progression. Progress reports can include first-responder unit information.
+
+---
+
+## 7. QR Code Access
+
+**URL:** http://localhost:3000/qr
+
+- Displays a QR code linking to the resident incident form.
+- No app install required — scan with a phone camera.
+- Useful for posters at the barangay hall, covered court, or community areas.
+
+---
+
+## 8. Roles & Permissions
+
+| Role | Submit reports | Track own reports | View all reports | Confirm / progress | Analytics | User management |
+|------|:--------------:|:-----------------:|:----------------:|:------------------:|:---------:|:---------------:|
+| Guest | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Resident | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Police Officer | ❌ | — | ✅ | ✅ | ✅ | ❌ |
+| Crime Analyst | ❌ | — | ✅ | ✅ | ✅ | ❌ |
+| Police Chief | ❌ | — | ✅ | ✅ | ✅ | ❌ |
+| Administrator | ❌ | — | ✅ | ✅ | ✅ | ✅ |
+| Barangay Captain | ❌ | — | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## 9. Presentation Script (Suggested Flow)
+
+**Duration: ~10–15 minutes**
+
+1. **Introduction (1 min)** — Landing page: explain B-SAFE purpose for Brgy. Banicain.
+2. **QR access (1 min)** — Show `/qr`; scan or click through to resident form.
+3. **Guest report (3 min)** — Submit a sample incident as guest; highlight 3-step form and official-informed question.
+4. **Official review (3 min)** — Log in as `officer1@bsafe.local`; open **Incident Reports**; confirm the submission.
+5. **Progress update (2 min)** — Add a progress report with first-responder unit.
+6. **Resident tracking (2 min)** — Log in as `resident@bsafe.local`; show `/residents/dashboard` with timeline.
+7. **Analytics (2 min)** — Open `/analytics`; show incident trends and PDF export.
+8. **Admin (optional)** — Log in as `captain@bsafe.local`; briefly show **Users** page.
+
+---
+
+## 10. Testing Status
+
+Last verified: **June 2026**
+
+| Check | Result |
+|-------|--------|
+| `npm run check` (TypeScript / Svelte) | ✅ 0 errors |
+| `npm run build` | ✅ Success |
+| All main routes (HTTP 200) | ✅ Pass |
+| API: unauthenticated `/api/reports` | ✅ 403 (expected) |
+| API: guest incident submit | ✅ 201 Created |
+| API: seed all demo accounts | ✅ 6 roles |
+| Supabase: resident login | ✅ Pass |
+| Supabase: officer login + fetch reports | ✅ Pass |
+| Resident auth isolation (403 for wrong reporter) | ✅ Pass |
+| Vitest unit tests (`npm run test`) | ✅ 2/2 passed (server + browser) |
+
+---
+
+## 11. Developer Reference
+
+### Key routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page |
+| `/qr` | QR code for resident portal |
+| `/residents` | Incident report form |
+| `/residents/dashboard` | Resident report tracker |
+| `/login`, `/signup` | Authentication |
+| `/dashboard` | Official overview |
+| `/reports` | Incident reports management |
+| `/analytics` | Analytics & PDF exports |
+| `/users` | User administration |
+
+### API endpoints
+
+| Method | Endpoint | Access |
+|--------|----------|--------|
+| GET | `/api/reports` | Officials only |
+| GET | `/api/reports?reporterId=…` | Own reports or officials |
+| POST | `/api/reports` | Residents/guests (structured metadata) or officials |
+| PUT | `/api/reports?id=…` | Officials only |
+| DELETE | `/api/reports?id=…` | Officials only |
+| GET | `/api/seed/accounts` | Recreate demo users (dev) |
+
+### Tech stack
+
+- SvelteKit + TypeScript + Tailwind CSS
+- Supabase Auth + PostgreSQL
+- jsPDF for analytics exports
+
+### Project structure
 
 ```
 src/
-  routes/              # SvelteKit pages & API endpoints
-    +page.svelte       # Landing page & role chooser modal
-    login/, signup/    # Auth flows (password + Gmail OTP)
-    residents/         # Resident incident form + autosave
-    dashboard/         # Official portal (tabs + modals)
-    analytics/, reports/, users/, settings/  # supporting views
-    api/               # JSON + SSE endpoints (reports + auth)
+  routes/           # Pages and API
   lib/
-    components/        # Shared UI (Sidebar, charts, modals)
-    server/            # In-memory stores (reports, verification)
-    supabaseClient.ts  # placeholder client config
-static/                # logos, favicons
-prisma/                # schema placeholder (future DB hookup)
+    components/     # UI (AppBar, Sidebar, FormSection, etc.)
+    constants/      # Barangay locations, labels, roles
+    server/         # Supabase, report repository
+    utils/          # Auth, report parsing
+docs/
+  REVISION-CHECKLIST.md   # Feature revision tracker
 ```
 
 ---
 
-## 4. Application Walkthrough
+## 12. Troubleshooting
 
-| Route | Audience | Highlights |
-| --- | --- | --- |
-| `/` (Landing) | Public | Animated hero, feature cards, About/How/Benefits sections, CTA triggering **Role Chooser Modal** to jump into resident or official flows. |
-| `/signup` | Residents & officers | Toggle between roles and between Gmail OTP signup (calls `/api/auth/send-code` + `/api/auth/verify-code`) or password signup (localStorage). Success redirects to `/residents` or `/dashboard`. |
-| `/login` | Residents & officers | Role toggle, credential validation (demo accounts for officials, localStorage for residents). On success, writes `localStorage.user` and routes to `/dashboard` or `/residents`. |
-| `/residents` | Residents | Form for report metadata, attachments preview, autosave to `localStorage`, and submission confirmation flow showing a mini status tracker (Seen → Processing → Done). |
-| `/dashboard` | Officials | Sidebar layout with tabs (Overview, Reports, Analytics, Team, Settings). Integrates live data via `/api/reports` + `/api/reports/stream`. Offers CRUD modals and status insights. |
-| `/reports` | Officials | Dedicated list/detail tooling (mirrors dashboard report tab but with more screen real estate). |
-| `/analytics` | Officials | Advanced insights view with KPI cards, trend placeholders, predictive insights, hot spots, and suggested actions. |
-| `/users`, `/settings` | Officials | Placeholder admin pages describing configuration patterns and future hooks. |
+| Problem | Solution |
+|---------|----------|
+| Login fails for demo accounts | Visit `http://localhost:3000/api/seed/accounts` to recreate users |
+| Guest report returns error | Ensure Supabase is configured; `reporter_id` must allow NULL for guests |
+| Official pages redirect to login | Use `/login?role=officer` and an official demo account |
+| Address validation error | Include **Banicain** and **Olongapo** in the address |
+| Port already in use | Stop other processes or check `vite.config` for port 3000 |
+| Vitest fails with Playwright error | Run `npx playwright install` |
 
 ---
 
-## 5. Popups, Modals & Secondary Flows
+## Support & Documentation
 
-| Popup / Modal | Trigger | Purpose |
-| --- | --- | --- |
-| **Role Chooser Modal** (`src/routes/+page.svelte`) | Landing page "Get Started" CTA | Lets visitors jump into Resident report or Official login flows without leaving hero section. |
-| **Gmail Verification Flow** (`signup`) | Gmail signup path | Sends OTP via `/api/auth/send-code`, captures 6-digit code, verifies with `/api/auth/verify-code`, then stores session in `localStorage`. |
-| **Resident Submission Confirmation** (`residents`) | After report submit | Replaces form with status tracker, CTA to file another or jump to dashboard. |
-| **Create Report Modal** (`dashboard`) | Officials click "Create Report" | Collects case metadata and POSTs to `/api/reports`. |
-| **View Report Modal** (`dashboard`) | "View details" icon | Read-only case summary with timeline of updates. |
-| **Edit Report Modal** (`dashboard`) | "Edit" icon or from view modal | Prefills form, allows updates via PUT `/api/reports?id=...`. |
-| **Delete Confirmation Modal** (`dashboard`) | "Delete" icon | Hard confirmation before calling DELETE `/api/reports?id=...`. |
-| **Crime History Modal** (`lib/components/CrimeHistoryModal.svelte`) | Reusable for analytics/report pages | Shows historical stats table with month-over-month deltas. Integrate via `show` prop. |
-| **Loading/Feedback overlays** | Login, signup, resident submit | Provide `isLoading` and `isSubmitting` animations, error toasts, and success banners. |
+- **Revision checklist:** `docs/REVISION-CHECKLIST.md`
+- **Supabase setup:** `SUPABASE_SETUP.md`
 
-When building new features, align with the existing modal conventions: backdrop blur, `PageTransition`, accessibility labels, and `transition:fade/scale` pairs for polished UX.
-
----
-
-## 6. Data & API Contracts
-
-### Reports API (`src/routes/api/reports`)
-- **GET** `/api/reports` – returns `{ reports: Report[] }` from in-memory store (seeded with demo data).  
-- **POST** `/api/reports` – accepts partial payload, server fills metadata (ID `CR-YYYY-MM-XXXX`, timestamps, initial update).  
-- **PUT** `/api/reports?id=CR-...` – merges updates, appends audit log entry with timestamp + note.  
-- **DELETE** `/api/reports?id=CR-...` – removes report, notifies subscribers.
-- **SSE** `/api/reports/stream` – `text/event-stream` pushing init snapshot plus `created | updated | deleted` events. Dashboard subscribes using `EventSource`.
-
-> Replace `$lib/server/reportsStore.ts` with a real database + queue when graduating from demo mode. The current setup is single-process only.
-
-### Auth API (`src/routes/api/auth`)
-- `send-code`: Validates Gmail address, generates 6-digit code, stores it in `verificationStore`, simulates email send (log).  
-- `verify-code`: Confirms stored code, returns `user` object with derived role.  
-- Storage is **in-memory** for now; use Redis or Prisma for production.
-
----
-
-## 7. Client-Side State & Auth Notes
-
-- Sessions are stored in `localStorage.user` with `{ username, role, isAuthenticated }`.  
-- Guards: Dashboard `onMount` ensures only official roles (Administrator, Police Officer, Police Chief, Crime Analyst). Residents are redirected to `/residents`, everyone else to `/login`.  
-- Signup/login flows also persist demo users to `localStorage.users`. For production, integrate Supabase or another auth provider.
-
----
-
-## 8. UI Components Worth Knowing
-
-- `Sidebar.svelte` – navigation + responsive drawer shared by official pages.
-- `ActionCard.svelte`, `DashboardCard.svelte`, `StatCard.svelte`, `TransactionTable.svelte` – building blocks for cards & lists.
-- `LineChart` & `BarChart` placeholders – ready for chart libraries (currently static scaffolding).
-- `PageTransition.svelte` – wrap every routed page for consistent enter animations.
-- `LoadingIndicator.svelte` – spinner overlay used during async actions.
-- `CrimeHistoryModal.svelte` – drop-in modal for analytics history views.
-
-When adding new UI, keep the gradient/blur aesthetic consistent and reuse PageTransition & Tailwind tokens already defined in `app.css`/`tailwind.config.js`.
-
----
-
-## 9. Developer Workflow & Expectations
-
-- **Code Style**: TypeScript everywhere, prefer explicit interfaces (see `Report` type). Use Tailwind utility classes; avoid large bespoke CSS unless scoped.
-- **State Management**: Keep it local within Svelte components or use `$lib/server` stores for shared data. Avoid adding global stores until necessary.
-- **Testing**: `src/routes/page.svelte.spec.ts` shows how to test Svelte pages with Vitest + Testing Library. Mirror that when adding regression coverage.
-- **Accessibility**: All modals already include `role="dialog"`, `aria-labelledby`, ESC close, and focusable buttons. Maintain those patterns.
-- **Deployment**: Currently adapter-agnostic. To deploy, install the appropriate adapter (`@sveltejs/adapter-node`, etc.) in `svelte.config.js`.
-
----
-
-## 10. Future Enhancements (Backlog for new devs)
-
-- Replace in-memory stores with Prisma/PostgreSQL (see `prisma/schema.prisma` placeholder).  
-- Wire Supabase auth/storage for OTP and attachments.  
-- Integrate actual video background and media uploads (S3/GCS).  
-- Implement role-based navigation (hide analytics for residents).  
-- Automate email/SMS via real provider (SendGrid/Twilio).  
-- Add push notifications / FCM for resolved reports.  
-- Harden tests around report CRUD and SSE reconnect logic.
-
----
-
-## 11. Support
-
-If you join mid-sprint:
-1. Review feature tickets in the backlog and map to the sections above.
-2. Shadow an existing teammate for one deploy cycle.
-3. Keep README updates in your PR if you change flows, routes, or APIs.
-
-Welcome aboard, and help us keep Barangay Banicain safe. 💙
+For thesis demos, keep the dev server running and use the demo accounts in [Section 3](#3-demo-login-accounts).

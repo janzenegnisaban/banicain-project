@@ -142,13 +142,14 @@ export async function insertReportIntoDatabase(report: Report, client?: Supabase
 	// Insert initial update if provided
 	if (report.updates && report.updates.length > 0) {
 		const initialUpdate = report.updates[0];
+		const reportId = data.id;
 		try {
 			await db.from('report_updates').insert({
-				report_id: report.id,
+				report_id: reportId,
 				comment: initialUpdate.note,
 				created_at: new Date(`${initialUpdate.date}T${initialUpdate.time}`).toISOString()
 			});
-			console.log('[Database] Inserted initial update for report:', report.id);
+			console.log('[Database] Inserted initial update for report:', reportId);
 		} catch (updateError) {
 			console.error('[Database] Error inserting update (non-fatal):', updateError);
 			// Don't throw - report was created successfully

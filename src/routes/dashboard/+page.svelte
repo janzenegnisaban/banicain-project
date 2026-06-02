@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-  import Sidebar from '$lib/components/Sidebar.svelte';
-  import PageTransition from '$lib/components/PageTransition.svelte';
+  import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import { goto } from '$app/navigation';
-  import { sidebarCollapsed } from '$lib/stores/sidebar';
+  import { authorizedFetch, hydrateSession } from '$lib/utils/auth';
   import { parseEvidenceEntries, parseResidentMetadata } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
   import type { Report } from '$lib/types/report';
@@ -74,7 +73,7 @@
   let originalNotes: string = '';
   
   // Official roles that can access dashboard
-  const officialRoles = ['Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
+  const officialRoles = ['Barangay Captain', 'Administrator', 'Police Officer', 'Police Chief', 'Crime Analyst'];
   
   // Team management state
   let showAddTeamMemberModal = false;
@@ -92,34 +91,11 @@
     password: ''
   };
   
-  const officialRoleOptions = ['Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator'];
+  const officialRoleOptions = ['Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator', 'Barangay Captain'];
   
-  // Check user role - only officials can access
-  onMount(() => {
-    try {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        currentUser = JSON.parse(userStr);
-        // Only allow officials to access dashboard
-        if (!currentUser || !officialRoles.includes(currentUser.role)) {
-          // If resident, redirect to residents page
-          if (currentUser?.role === 'Resident') {
-            goto('/residents');
-            return;
-          }
-          // Otherwise redirect to login
-          goto('/login');
-          return;
-        }
-      } else {
-        goto('/login');
-        return;
-      }
-    } catch {
-      goto('/login');
-      return;
-    }
-    
+  onMount(async () => {
+    currentUser = await hydrateSession();
+
     // Fetch initial reports if load data was empty
     if (reports.length === 0) {
       fetchReports();
@@ -142,7 +118,7 @@
   
   async function fetchReports() {
     try {
-      const res = await fetch('/api/reports');
+      const res = await authorizedFetch('/api/reports');
       const data = await res.json();
       reports = data.reports || [];
       isLoading = false;
@@ -292,7 +268,7 @@
   
   async function createReport() {
     try {
-      const response = await fetch('/api/reports', {
+      const response = await authorizedFetch('/api/reports', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(createForm)
@@ -449,7 +425,7 @@
         }
       }
       
-      const response = await fetch(`/api/reports?id=${editingReport.id}`, {
+      const response = await authorizedFetch(`/api/reports?id=${editingReport.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -479,12 +455,12 @@
   async function confirmReport(report: Report) {
     if (!report || report.status !== 'Pending Confirmation') return;
     try {
-      const response = await fetch(`/api/reports?id=${report.id}`, {
+      const response = await authorizedFetch(`/api/reports?id=${report.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           status: 'Open',
-          updateNote: 'Report confirmed by officials'
+          updateNote: 'Progress report: Report confirmed by officials'
         })
       });
 
@@ -519,7 +495,7 @@
     const reportId = reportToDelete.id;
     
     try {
-      const response = await fetch(`/api/reports?id=${reportId}`, {
+      const response = await authorizedFetch(`/api/reports?id=${reportId}`, {
         method: 'DELETE'
       });
       
@@ -593,7 +569,7 @@
   async function fetchTeamMembers() {
     isLoadingTeamMembers = true;
     try {
-      const res = await fetch('/api/users');
+      const res = await authorizedFetch('/api/users');
       const data = await res.json();
       if (data.error) {
         console.error('Error fetching team members:', data.error);
@@ -682,7 +658,7 @@
         password: teamMemberForm.password
       };
       
-      const response = await fetch('/api/users', {
+      const response = await authorizedFetch('/api/users', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
@@ -730,55 +706,34 @@
   }));
 </script>
 
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 relative">
-  <Sidebar />
-  
-  <!-- Main Content Area -->
-  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'}">
-    <PageTransition duration={300} delay={100}>
-      <!-- Modern Header with Glassmorphism -->
-      <div class="sticky top-0 z-40 mb-8">
-        <div class="bg-white/80 backdrop-blur-xl border-b border-emerald-100/50 shadow-sm">
-          <div class="p-4 lg:p-6">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <h1 class="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-1">
-                  Official Dashboard
-                </h1>
-                <p class="text-gray-600 text-sm lg:text-base">Comprehensive overview and management system</p>
-                {#if currentUser}
-                  <div class="flex items-center gap-2 mt-2">
-                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <p class="text-sm text-gray-500">Welcome, <span class="font-semibold text-emerald-700">{currentUser.username}</span> ({currentUser.role})</p>
-                  </div>
-                {/if}
-              </div>
-              <div class="flex items-center gap-3">
-                <button 
-                  class="group relative bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                  on:click={() => goto('/reports')}
-                >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                  <span>Manage Reports</span>
-                </button>
-                <button 
-                  class="group relative bg-white hover:bg-gray-50 text-emerald-600 border-2 border-emerald-200 hover:border-emerald-300 px-5 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center space-x-2 shadow-sm hover:shadow-md"
-                  on:click={() => goto('/analytics')}
-                >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                  </svg>
-                  <span>View Analytics</span>
-                </button>
-              </div>
-            </div>
-      </div>
-    </div>
-  </div>
+<OfficialLayout
+  title="Official Dashboard"
+  subtitle="Comprehensive overview and management system"
+  variant="glass"
+  flush
+>
+  <svelte:fragment slot="actions">
+    <button
+      class="group relative bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+      on:click={() => goto('/reports')}
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+      </svg>
+      <span>Manage Reports</span>
+    </button>
+    <button
+      class="group relative bg-white hover:bg-gray-50 text-emerald-600 border-2 border-emerald-200 hover:border-emerald-300 px-5 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center space-x-2 shadow-sm hover:shadow-md"
+      on:click={() => goto('/analytics')}
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+      </svg>
+      <span>View Analytics</span>
+    </button>
+  </svelte:fragment>
 
-      <div class="p-4 lg:p-6 space-y-6">
+  <div class="p-4 lg:p-6 space-y-6">
 
         <!-- Quick Stats Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
@@ -1613,10 +1568,8 @@
           </div>
         </div>
       {/if}
-      </div>
-    </PageTransition>
   </div>
-</div>
+</OfficialLayout>
 
 <!-- Create Report Modal -->
 {#if showCreateModal}

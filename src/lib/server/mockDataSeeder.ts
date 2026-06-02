@@ -332,13 +332,25 @@ type AccountSeed = {
 const DEFAULT_RESIDENT_REPORTER_ID = '00000000-0000-0000-0000-000000000001';
 
 const MOCK_RESIDENT_ACCOUNT: AccountSeed = {
-	email: 'mock.reporter@test.com',
+	email: 'resident@bsafe.local',
 	password: 'ResidentSecure!1',
-	fullName: 'Mock Reporter',
+	fullName: 'Juan Dela Cruz',
 	role: 'Resident'
 };
 
 const OFFICER_ACCOUNTS: AccountSeed[] = [
+	{
+		email: 'captain@bsafe.local',
+		password: 'CaptainSecure!1',
+		fullName: 'Kapitan Elena Bautista',
+		role: 'Barangay Captain'
+	},
+	{
+		email: 'admin@bsafe.local',
+		password: 'AdminSecure!1',
+		fullName: 'Administrator Carlo Reyes',
+		role: 'Administrator'
+	},
 	{
 		email: 'chief@bsafe.local',
 		password: 'ChiefSecure!1',
@@ -356,12 +368,6 @@ const OFFICER_ACCOUNTS: AccountSeed[] = [
 		password: 'OfficerSecure!1',
 		fullName: 'Officer Lea Santiago',
 		role: 'Police Officer'
-	},
-	{
-		email: 'admin@bsafe.local',
-		password: 'AdminSecure!1',
-		fullName: 'Administrator Carlo Reyes',
-		role: 'Administrator'
 	}
 ];
 
@@ -427,12 +433,6 @@ async function ensureAccountSeed(seed: AccountSeed) {
 	return { userId, createdAuthUser, profileSynced };
 }
 
-async function seedMockResidentAccount() {
-	const result = await ensureAccountSeed(MOCK_RESIDENT_ACCOUNT);
-	const reporterId = result.userId ?? DEFAULT_RESIDENT_REPORTER_ID;
-	return { reporterId, createdAuthUser: result.createdAuthUser, profileSynced: result.profileSynced };
-}
-
 export async function seedOfficerAccounts() {
 	let createdAuthUsers = 0;
 	let profilesSynced = 0;
@@ -448,6 +448,54 @@ export async function seedOfficerAccounts() {
 	}
 
 	return { createdAuthUsers, profilesSynced };
+}
+
+/** Create/update Supabase Auth + public.users for every test role. */
+export async function seedAllTestAccounts() {
+	const resident = await ensureAccountSeed(MOCK_RESIDENT_ACCOUNT);
+	const officers = await seedOfficerAccounts();
+
+	const accounts: Array<{
+		email: string;
+		role: string;
+		fullName: string;
+		userId: string | null;
+		profileSynced: boolean;
+	}> = [
+		{
+			email: MOCK_RESIDENT_ACCOUNT.email,
+			role: MOCK_RESIDENT_ACCOUNT.role,
+			fullName: MOCK_RESIDENT_ACCOUNT.fullName,
+			userId: resident.userId,
+			profileSynced: resident.profileSynced
+		}
+	];
+
+	for (const account of OFFICER_ACCOUNTS) {
+		const userId = await findAuthUserIdByEmail(account.email);
+		accounts.push({
+			email: account.email,
+			role: account.role,
+			fullName: account.fullName,
+			userId,
+			profileSynced: Boolean(userId)
+		});
+	}
+
+	return {
+		residentUserId: resident.userId ?? DEFAULT_RESIDENT_REPORTER_ID,
+		officersCreated: officers.createdAuthUsers,
+		officerProfilesSynced: officers.profilesSynced,
+		residentCreated: resident.createdAuthUser,
+		residentProfileSynced: resident.profileSynced,
+		accounts
+	};
+}
+
+async function seedMockResidentAccount() {
+	const result = await ensureAccountSeed(MOCK_RESIDENT_ACCOUNT);
+	const reporterId = result.userId ?? DEFAULT_RESIDENT_REPORTER_ID;
+	return { reporterId, createdAuthUser: result.createdAuthUser, profileSynced: result.profileSynced };
 }
 
 /**

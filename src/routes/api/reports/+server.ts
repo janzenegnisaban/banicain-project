@@ -5,7 +5,6 @@ import {
 	deleteReport as deleteLocalReport,
 	getReports,
 	replaceReports,
-	seedIfEmpty,
 	upsertReportSnapshot
 } from '$lib/server/reportsStore';
 import type { Report } from '$lib/types/report';
@@ -15,20 +14,22 @@ import {
 	insertReportIntoDatabase,
 	updateReportInDatabase
 } from '$lib/server/reportRepository';
-import { seedMockDataToDatabase } from '$lib/server/mockDataSeeder';
 import { getSupabaseClientForRequest } from '$lib/server/supabase';
+import {
+	authError,
+	getSessionUser,
+	isAuthResponse,
+	isOfficialRole,
+	requireOfficialUser
+} from '$lib/server/auth';
 import { parseResidentMetadata } from '$lib/utils/reportParsing';
 
 async function loadReports(client?: SupabaseClient): Promise<Report[]> {
-	// Check in-memory store first to avoid unnecessary database queries
 	const cached = getReports();
 	if (cached.length > 0) {
-		// Return cached reports, but still refresh in background if needed
-		// (For now, we'll use cached data to reduce load)
 		return cached;
 	}
-	
-	// Only fetch from database if we have no cached reports
+
 	const remote = await fetchReportsFromDatabase(client);
 	replaceReports(remote);
 	return remote;
@@ -36,7 +37,7 @@ async function loadReports(client?: SupabaseClient): Promise<Report[]> {
 
 function asStringArray(value: unknown): string[] {
 	if (Array.isArray(value)) {
-		return (value as unknown[]).map(item => String(item));
+		return (value as unknown[]).map((item) => String(item));
 	}
 	if (typeof value === 'string' && value.trim().length > 0) {
 		return [value];
@@ -54,7 +55,7 @@ const allowedStatuses: Report['status'][] = [
 function normalizeStatusInput(value: unknown): Report['status'] | null {
 	if (typeof value !== 'string') return null;
 	const normalized = value.trim().toLowerCase();
-	return allowedStatuses.find(status => status.toLowerCase() === normalized) ?? null;
+	return allowedStatuses.find((status) => status.toLowerCase() === normalized) ?? null;
 }
 
 function isResidentSubmission(payload: Record<string, unknown>): boolean {
@@ -70,7 +71,7 @@ function buildNewReport(payload: Record<string, unknown>): Report {
 	const requestedStatus = normalizeStatusInput(payload.status);
 	const status: Report['status'] = isResidentSubmission(payload)
 		? 'Pending Confirmation'
-		: requestedStatus ?? 'Open';
+		: (requestedStatus ?? 'Open');
 	const initialUpdateNote =
 		status === 'Pending Confirmation'
 			? 'Report submitted and awaiting official confirmation'
@@ -107,7 +108,10 @@ function buildNewReport(payload: Record<string, unknown>): Report {
 				note: initialUpdateNote
 			}
 		],
-		reporterId: typeof payload.reporterId === 'string' && payload.reporterId.length > 0 ? payload.reporterId : null
+		reporterId:
+			typeof payload.reporterId === 'string' && payload.reporterId.length > 0
+				? payload.reporterId
+				: null
 	};
 }
 
@@ -115,30 +119,70 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	const authHeader = request.headers.get('authorization') ?? undefined;
 	const dbClient = getSupabaseClientForRequest(authHeader);
 	const reporterId = url.searchParams.get('reporterId');
+	const sessionUser = await getSessionUser(request);
 
 	try {
-		let reports = await loadReports(dbClient);
-
 		if (reporterId) {
+			if (!sessionUser) {
+				return authError('Sign in required to view your reports');
+			}
+			if (sessionUser.id !== reporterId && !isOfficialRole(sessionUser.role)) {
+				return authError('You can only view your own reports', 403);
+			}
+
+			let reports = await loadReports(dbClient);
 			reports = reports.filter((report) => report.reporterId === reporterId);
+
+			return new Response(JSON.stringify({ reports, source: 'database' }), {
+				headers: { 'content-type': 'application/json' }
+			});
 		}
 
+		const official = await requireOfficialUser(request);
+		if (isAuthResponse(official)) {
+			return official;
+		}
+
+		const reports = await loadReports(dbClient);
 		return new Response(JSON.stringify({ reports, source: 'database' }), {
 			headers: { 'content-type': 'application/json' }
 		});
 	} catch (error) {
 		console.error('[API] Failed to load reports:', error);
-		return new Response(JSON.stringify({ reports: [], source: 'database', error: 'Failed to load reports' }), {
-			status: 500,
-			headers: { 'content-type': 'application/json' }
-		});
+		return new Response(
+			JSON.stringify({ reports: [], source: 'database', error: 'Failed to load reports' }),
+			{
+				status: 500,
+				headers: { 'content-type': 'application/json' }
+			}
+		);
 	}
 };
 
 export const POST: RequestHandler = async ({ request }) => {
 	const authHeader = request.headers.get('authorization') ?? undefined;
 	const dbClient = getSupabaseClientForRequest(authHeader);
+	const sessionUser = await getSessionUser(request);
 	const body = await request.json().catch(() => ({}));
+
+	const residentSubmission = isResidentSubmission(body);
+
+	if (!residentSubmission) {
+		const official = await requireOfficialUser(request);
+		if (isAuthResponse(official)) {
+			return official;
+		}
+	}
+
+	if (residentSubmission && body.reporterId) {
+		if (!sessionUser) {
+			return authError('Sign in required to link this report to your account');
+		}
+		if (sessionUser.id !== body.reporterId) {
+			return authError('Reporter ID does not match your account', 403);
+		}
+	}
+
 	const newReport = buildNewReport(body);
 	console.log('[API] Creating new report:', newReport.id);
 
@@ -148,17 +192,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		console.log('[API] Report successfully persisted to Supabase:', persisted.id);
 	} catch (error) {
 		console.error('[API] Failed to persist report to Supabase:', error);
-		if (error instanceof Error) {
-			console.error('[API] Error message:', error.message);
-			console.error('[API] Error stack:', error.stack);
+		if (residentSubmission) {
+			return new Response(
+				JSON.stringify({
+					error: 'Unable to save your report. Please try again or contact barangay officials.'
+				}),
+				{ status: 500, headers: { 'content-type': 'application/json' } }
+			);
 		}
-		// Continue with in-memory store as fallback
 	}
 
 	const finalReport = persisted ?? newReport;
 	addReport(finalReport);
-	
-	// Broadcast the new report via SSE
+
 	if (persisted) {
 		upsertReportSnapshot(finalReport, { broadcastType: 'created' });
 	}
@@ -170,6 +216,11 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 export const PUT: RequestHandler = async ({ request, url }) => {
+	const official = await requireOfficialUser(request);
+	if (isAuthResponse(official)) {
+		return official;
+	}
+
 	const authHeader = request.headers.get('authorization') ?? undefined;
 	const dbClient = getSupabaseClientForRequest(authHeader);
 	const id = url.searchParams.get('id');
@@ -183,7 +234,7 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 	const body = await request.json().catch(() => ({}));
 	const { updateNote, ...updates } = body as Record<string, unknown> & { updateNote?: string };
 	const partialUpdates = updates as Partial<Report>;
-	const existing = getReports().find(report => report.id === id);
+	const existing = getReports().find((report) => report.id === id);
 	const now = new Date();
 	const historyEntry = {
 		date: now.toISOString().slice(0, 10),
@@ -204,10 +255,13 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 		updated = await updateReportInDatabase(id, supabasePayload, dbClient);
 	} catch (error) {
 		console.error('Failed to update Supabase report', error);
+		return new Response(JSON.stringify({ error: 'Failed to update report' }), {
+			status: 500,
+			headers: { 'content-type': 'application/json' }
+		});
 	}
 
 	if (updated) {
-		// Persist history entry so residents can see case progress
 		try {
 			await dbClient.from('report_updates').insert({
 				report_id: updated.id,
@@ -245,6 +299,11 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 };
 
 export const DELETE: RequestHandler = async ({ url, request }) => {
+	const official = await requireOfficialUser(request);
+	if (isAuthResponse(official)) {
+		return official;
+	}
+
 	const authHeader = request.headers.get('authorization') ?? undefined;
 	const dbClient = getSupabaseClientForRequest(authHeader);
 	const id = url.searchParams.get('id');
@@ -259,6 +318,10 @@ export const DELETE: RequestHandler = async ({ url, request }) => {
 		await deleteReportFromDatabase(id, dbClient);
 	} catch (error) {
 		console.error('Failed to delete Supabase report', error);
+		return new Response(JSON.stringify({ error: 'Failed to delete report' }), {
+			status: 500,
+			headers: { 'content-type': 'application/json' }
+		});
 	}
 
 	const deleted = deleteLocalReport(id);
@@ -273,4 +336,3 @@ export const DELETE: RequestHandler = async ({ url, request }) => {
 		headers: { 'content-type': 'application/json' }
 	});
 };
-

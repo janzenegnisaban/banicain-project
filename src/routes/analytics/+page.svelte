@@ -1,10 +1,11 @@
 <script lang="ts">
-  import Sidebar from '$lib/components/Sidebar.svelte';
+  import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-  import { sidebarCollapsed } from '$lib/stores/sidebar';
+  import { authorizedFetch } from '$lib/utils/auth';
   import type { Report } from '$lib/types/report';
   import { jsPDF } from 'jspdf';
+  import { LABELS } from '$lib/constants/barangay';
   
   // Reports data
   let reports: Report[] = [];
@@ -190,14 +191,14 @@
     if (analyticsData.crimeTrend === 'increasing') {
       insights.push({
         type: 'warning',
-        title: 'Crime trend is increasing',
+        title: 'Incident trend is increasing',
         description: 'Recent months show higher incident rates'
       });
     } else if (analyticsData.crimeTrend === 'decreasing') {
       insights.push({
         type: 'success',
-        title: 'Crime trend is decreasing',
-        description: 'Positive trend in crime reduction'
+        title: 'Incident trend is decreasing',
+        description: 'Positive trend in incident reduction'
       });
     }
 
@@ -216,7 +217,7 @@
 
   async function fetchReports() {
     try {
-      const res = await fetch('/api/reports');
+      const res = await authorizedFetch('/api/reports');
       const data: { reports?: Report[] } = await res.json();
       if (data?.reports) {
         reports = data.reports;
@@ -273,7 +274,7 @@
       yPosition += lineHeight;
       pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
       yPosition += lineHeight;
-      pdf.text(`Crime Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
+      pdf.text(`Incident Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
       yPosition += 10;
 
       // Top Crime Types
@@ -526,7 +527,7 @@
       const recommendations = [];
       if (analyticsData.crimeTrend === 'increasing') {
         recommendations.push('Increase patrol frequency in high-risk areas');
-        recommendations.push('Allocate additional resources for crime prevention');
+        recommendations.push('Allocate additional resources for incident prevention');
       }
       if (highRiskAreas.length > 0) {
         recommendations.push(`Focus surveillance efforts on: ${highRiskAreas.slice(0, 2).join(', ')}`);
@@ -603,7 +604,7 @@
       yPosition += lineHeight;
       pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
       yPosition += lineHeight;
-      pdf.text(`Crime Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
+      pdf.text(`Incident Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
       yPosition += 10;
 
       // Top Crime Types
@@ -779,30 +780,12 @@
   });
 </script>
 
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
-  <Sidebar />
-  
-  <div class="transition-all duration-300 {$sidebarCollapsed ? 'lg:ml-24' : 'lg:ml-80'} p-4 lg:p-6" bind:this={analyticsContent}>
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-teal-600 via-emerald-600 to-primary-600 p-8 rounded-2xl shadow-2xl mb-8 relative overflow-hidden">
-      <div class="absolute top-0 right-0 w-80 h-80 -mt-16 -mr-16 bg-teal-400 opacity-20 rounded-full blur-3xl animate-float"></div>
-      <div class="absolute bottom-0 left-0 w-64 h-64 -mb-12 -ml-12 bg-emerald-400 opacity-20 rounded-full blur-3xl animate-float" style="animation-delay: 1s;"></div>
-      
-      <div class="relative z-10">
-        <div class="flex items-center space-x-4 mb-4">
-          <div class="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-            </svg>
-          </div>
-          <div>
-            <h1 class="text-4xl font-bold text-white mb-2">Smart Analytics</h1>
-            <p class="text-teal-100 text-lg">AI-powered insights and predictive crime analysis</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
+<OfficialLayout
+  title="Analytical & Prediction Reports"
+  subtitle="Incident analytics with AI-powered prediction insights for barangay planning"
+  variant="gradient"
+>
+  <div bind:this={analyticsContent}>
     <!-- Key Metrics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       <div class="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300" in:fly={{ y: 20, duration: 300, delay: 100 }}>
@@ -857,8 +840,8 @@
               </svg>
             </div>
             <div>
-              <h2 class="text-xl font-bold text-gray-800">Crime Type Analysis</h2>
-              <p class="text-gray-600 text-sm">Distribution of crime types and incidents</p>
+              <h2 class="text-xl font-bold text-gray-800">Incident Type Analysis</h2>
+              <p class="text-gray-600 text-sm">Distribution of incident types</p>
             </div>
           </div>
           
@@ -995,7 +978,7 @@
                   </div>
                   <div class="text-center">
                     <p class="text-2xl font-bold text-teal-600">{analyticsData.topCrimeTypes.length}</p>
-                    <p class="text-xs text-gray-600 mt-1">Crime Types</p>
+                    <p class="text-xs text-gray-600 mt-1">Incident Types</p>
                   </div>
                   <div class="text-center">
                     <p class="text-2xl font-bold text-blue-600">
@@ -1073,7 +1056,7 @@
 
       <!-- Right Column - Insights and Reports -->
       <div class="space-y-6">
-        <!-- Top Crime Types -->
+        <!-- Top Incident Types -->
         <div class="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/50" in:fly={{ y: 20, duration: 300, delay: 700 }}>
           <div class="flex items-center space-x-3 mb-6">
             <div class="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
@@ -1082,7 +1065,7 @@
               </svg>
             </div>
             <div>
-              <h2 class="text-lg font-bold text-gray-800">Top Crime Types</h2>
+              <h2 class="text-lg font-bold text-gray-800">Top Incident Types</h2>
               <p class="text-gray-600 text-sm">Most frequent incidents</p>
             </div>
           </div>
@@ -1090,11 +1073,11 @@
           <div class="space-y-3">
             {#if isLoading}
               <div class="p-3 bg-gray-50 rounded-lg">
-                <p class="text-sm text-gray-500 text-center">Loading crime types...</p>
+                <p class="text-sm text-gray-500 text-center">Loading incident types...</p>
               </div>
             {:else if analyticsData.topCrimeTypes.length === 0}
               <div class="p-3 bg-gray-50 rounded-lg">
-                <p class="text-sm text-gray-500 text-center">No crime type data available</p>
+                <p class="text-sm text-gray-500 text-center">No incident type data available</p>
               </div>
             {:else}
               {#each analyticsData.topCrimeTypes as crime}
@@ -1194,7 +1177,7 @@
       </div>
     </div>
   </div>
-</div>
+</OfficialLayout>
 
 <style>
   .animate-float {

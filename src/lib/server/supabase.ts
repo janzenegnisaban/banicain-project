@@ -2,11 +2,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 
 const supabaseUrl = env.SUPABASE_URL ?? env.PUBLIC_SUPABASE_URL;
-// Prefer service role key for server-side operations (bypasses RLS)
-// Fall back to anon key only if service role is not available
-const supabaseKey = env.SUPABASE_KEY ?? env.PUBLIC_SUPABASE_ANON_KEY;
+// Prefer service role key for server-side admin operations (bypasses RLS)
+const supabaseKey =
+	env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_KEY ?? env.PUBLIC_SUPABASE_ANON_KEY;
 const publicAnonKey = env.PUBLIC_SUPABASE_ANON_KEY;
-const isServiceRole = Boolean(env.SUPABASE_KEY);
+const isServiceRole = Boolean(env.SUPABASE_SERVICE_ROLE_KEY);
 
 if (!supabaseUrl) {
 	throw new Error('SUPABASE_URL (or PUBLIC_SUPABASE_URL) is required. Set it in your environment variables.');
@@ -19,7 +19,7 @@ if (!supabaseKey) {
 // Warn if using anon key for server operations (will be subject to RLS)
 if (!isServiceRole && process.env.NODE_ENV !== 'production') {
 	console.warn(
-		'[Supabase] WARNING: Using anon key for server operations. Set SUPABASE_KEY (service role key) to bypass RLS policies.'
+		'[Supabase] WARNING: Using anon key for server operations. Set SUPABASE_SERVICE_ROLE_KEY to enable admin user seeding and bypass RLS.'
 	);
 }
 
