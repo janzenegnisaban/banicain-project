@@ -65,7 +65,7 @@
           role={currentUser.role}
         >
           <svelte:fragment slot="actions">
-            <slot name="actions" />
+            <slot name="actions" {currentUser} />
           </svelte:fragment>
         </AppBar>
 
