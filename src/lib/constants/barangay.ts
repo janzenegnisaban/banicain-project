@@ -24,8 +24,8 @@ export const LABELS = {
 
 export const BARANGAY_NAME = 'Brgy. Banicain, Olongapo City, Zambales';
 
-/** Super Admin = Barangay Captain; full system control. */
-export const SUPER_ADMIN_ROLES = ['Barangay Captain', 'Administrator'] as const;
+/** Super Admin = Barangay Captain; full system control including user management. */
+export const SUPER_ADMIN_ROLES = ['Barangay Captain'] as const;
 
 export const ALL_ROLES = [
 	'Resident',

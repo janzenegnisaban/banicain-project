@@ -7,6 +7,7 @@
   import ResidentCaseTracker from '$lib/components/ResidentCaseTracker.svelte';
   import type { Report } from '$lib/types/report';
   import type { SessionUser } from '$lib/types/user';
+  import { supabase } from '$lib/supabaseClient';
   import { authorizedFetch as authFetch, hydrateSession } from '$lib/utils/auth';
 
   let currentUser: SessionUser | null = null;
@@ -88,13 +89,34 @@
       })
     : myReports;
 
-  onMount(async () => {
-    currentUser = await hydrateSession();
-    isAuthChecked = true;
-    if (currentUser?.role === 'Resident' && currentUser.id) {
-      fetchMyReports(currentUser.id);
-      startReportsPolling(currentUser.id);
-    }
+  onMount(() => {
+    let authSubscription: { unsubscribe: () => void } | null = null;
+
+    (async () => {
+      currentUser = await hydrateSession();
+      isAuthChecked = true;
+      if (isAuthenticatedResident() && currentUser?.id) {
+        fetchMyReports(currentUser.id);
+        startReportsPolling(currentUser.id);
+      }
+
+      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          currentUser = await hydrateSession();
+          if (isAuthenticatedResident() && currentUser?.id) {
+            fetchMyReports(currentUser.id);
+            startReportsPolling(currentUser.id);
+          }
+        } else {
+          currentUser = null;
+        }
+      });
+      authSubscription = data.subscription;
+    })();
+
+    return () => {
+      authSubscription?.unsubscribe();
+    };
   });
 
   onDestroy(() => {

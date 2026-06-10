@@ -23,8 +23,8 @@
     { title: 'Dashboard', icon: '📊', href: '/dashboard', description: 'Overview and statistics' },
     { title: 'Incident Reports', icon: '📋', href: '/reports', description: 'Manage incident reports' },
     { title: 'Analytics', icon: '📈', href: '/analytics', description: 'Data analysis and insights' },
-    ...(user?.role === 'Administrator' || user?.role === 'Barangay Captain'
-      ? [{ title: 'Users', icon: '👥', href: '/users', description: 'Manage team accounts' }]
+    ...(user?.role === 'Barangay Captain'
+      ? [{ title: 'Users', icon: '👥', href: '/users', description: 'Manage team accounts (Super Admin)' }]
       : [])
   ];
 

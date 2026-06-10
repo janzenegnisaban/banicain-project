@@ -4,6 +4,8 @@
   import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import { goto } from '$app/navigation';
   import { authorizedFetch, hydrateSession } from '$lib/utils/auth';
+  import { isSuperAdmin } from '$lib/types/user';
+  import { INCIDENT_TYPES } from '$lib/constants/barangay';
   import { parseEvidenceEntries, parseResidentMetadata } from '$lib/utils/reportParsing';
   import type { EvidenceBuckets, ResidentMetadataResult } from '$lib/utils/reportParsing';
   import type { Report } from '$lib/types/report';
@@ -20,6 +22,10 @@
   let isLoading = reports.length === 0;
   let eventSource: EventSource | null = null;
   let activeTab = 'overview';
+  let reportSearchTerm = '';
+  let reportStatusFilter = 'All';
+  let reportPriorityFilter = 'All';
+  let reportTypeFilter = 'All';
   let showCreateModal = false;
   let showEditModal = false;
   let showDeleteConfirm = false;
@@ -91,7 +97,7 @@
     password: ''
   };
   
-  const officialRoleOptions = ['Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator', 'Barangay Captain'];
+  const officialRoleOptions = ['Police Officer', 'Crime Analyst', 'Police Chief'];
   
   onMount(async () => {
     currentUser = await hydrateSession();
@@ -233,6 +239,7 @@
     return count + buckets.media.length;
   }, 0);
   $: solvedRate = totalReports > 0 ? ((solvedReports / totalReports) * 100).toFixed(1) : '0';
+  $: isSuperAdminUser = currentUser ? isSuperAdmin(currentUser.role) : false;
   
   // Analytics data
   $: reportsByType = reports.reduce((acc, r) => {
@@ -569,7 +576,7 @@
   async function fetchTeamMembers() {
     isLoadingTeamMembers = true;
     try {
-      const res = await authorizedFetch('/api/users');
+      const res = await authorizedFetch('/api/users?scope=official');
       const data = await res.json();
       if (data.error) {
         console.error('Error fetching team members:', data.error);
@@ -638,6 +645,10 @@
   
   async function saveTeamMember() {
     if (isSavingTeamMember) return;
+    if (!isSuperAdminUser) {
+      alert('Only the Barangay Captain (Super Admin) can create user accounts.');
+      return;
+    }
     if (!teamMemberForm.email || !teamMemberForm.username || !teamMemberForm.password) {
       alert('Email, username, and password are required');
       return;
@@ -699,6 +710,25 @@
 
   $: selectedEvidence = selectedReport ? parseEvidenceEntries(selectedReport.evidence ?? []) : { media: [], text: [] };
   $: selectedResidentDetails = selectedReport ? parseResidentMetadata(selectedReport.notes ?? '') : null;
+  $: dashboardReportTypeOptions = [
+    ...new Set([...INCIDENT_TYPES, ...reports.map((report) => report.type).filter(Boolean)])
+  ].sort();
+
+  $: filteredDashboardReports = reports.filter((report) => {
+    const query = reportSearchTerm.trim().toLowerCase();
+    const matchesSearch =
+      query === '' ||
+      [report.title, report.type, report.location, report.description, report.officer, report.id, report.shortId]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    const matchesStatus = reportStatusFilter === 'All' || report.status === reportStatusFilter;
+    const matchesPriority = reportPriorityFilter === 'All' || report.priority === reportPriorityFilter;
+    const matchesType = reportTypeFilter === 'All' || report.type === reportTypeFilter;
+    return matchesSearch && matchesStatus && matchesPriority && matchesType;
+  });
+
   $: reportViewModels = reports.map(report => ({
     base: report,
     resident: parseResidentMetadata(report.notes ?? ''),
@@ -1157,8 +1187,59 @@
                 <p class="mt-4 text-gray-600 text-lg">No reports yet</p>
               </div>
             {:else}
+              <div class="mb-6 space-y-4">
+                <div class="relative">
+                  <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                  </svg>
+                  <input
+                    type="text"
+                    bind:value={reportSearchTerm}
+                    placeholder="Search incidents by title, type, location, description, officer, or ID..."
+                    class="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <select bind:value={reportStatusFilter} class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
+                    <option value="All">All Status</option>
+                    <option value="Pending Confirmation">Pending Confirmation</option>
+                    <option value="Open">Open</option>
+                    <option value="Under Investigation">Under Investigation</option>
+                    <option value="Solved">Solved</option>
+                  </select>
+                  <select bind:value={reportPriorityFilter} class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
+                    <option value="All">All Priorities</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                  <select bind:value={reportTypeFilter} class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
+                    <option value="All">All Incident Types</option>
+                    {#each dashboardReportTypeOptions as incidentType}
+                      <option value={incidentType}>{incidentType}</option>
+                    {/each}
+                  </select>
+                  <button
+                    type="button"
+                    class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium"
+                    on:click={() => {
+                      reportSearchTerm = '';
+                      reportStatusFilter = 'All';
+                      reportPriorityFilter = 'All';
+                      reportTypeFilter = 'All';
+                    }}
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+                <p class="text-sm text-gray-500">Showing {filteredDashboardReports.length} of {reports.length} reports</p>
+              </div>
+
               <div class="space-y-4">
-                {#each reportViewModels.slice(0, 10) as { base: report, resident, evidence } (report.id)}
+                {#each filteredDashboardReports.slice(0, 20) as report (report.id)}
+                  {@const resident = parseResidentMetadata(report.notes ?? '')}
+                  {@const evidence = parseEvidenceEntries(report.evidence ?? [])}
                   <div class="bg-white rounded-xl p-6 border border-gray-100 hover:border-emerald-200 transition-all duration-300 hover:shadow-lg" in:fly={{ y: 20, duration: 300 }}>
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
@@ -1427,12 +1508,14 @@
             {:else if teamMembers.length === 0}
               <div class="text-center py-12">
                 <p class="text-gray-600 mb-4">No team members found.</p>
-                <button 
-                  class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
-                  on:click={openAddTeamMemberModal}
-                >
-                  Add Your First Team Member
-                </button>
+                {#if isSuperAdminUser}
+                  <button 
+                    class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                    on:click={openAddTeamMemberModal}
+                  >
+                    Add Your First Team Member
+                  </button>
+                {/if}
               </div>
             {:else}
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -1481,12 +1564,21 @@
             <div class="p-6 bg-gray-50 rounded-xl">
               <h3 class="font-semibold text-gray-800 mb-4">Quick Actions</h3>
               <div class="flex flex-wrap gap-3">
-                <button 
-                  class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
-                  on:click={openAddTeamMemberModal}
-                >
-                  Add Team Member
-                </button>
+                {#if isSuperAdminUser}
+                  <button 
+                    class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                    on:click={openAddTeamMemberModal}
+                  >
+                    Add Team Member
+                  </button>
+                  <button 
+                    type="button"
+                    class="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm"
+                    on:click={() => goto('/users')}
+                  >
+                    Manage Users
+                  </button>
+                {/if}
                 <button 
                   class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                   on:click={openViewAllMembersModal}

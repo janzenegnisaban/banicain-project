@@ -1,11 +1,29 @@
 import { goto } from '$app/navigation';
 import { supabase } from '$lib/supabaseClient';
-import { isAdministrator, isOfficialRole, type SessionUser } from '$lib/types/user';
+import { isAdministrator, isOfficialRole, isSuperAdmin, type SessionUser } from '$lib/types/user';
 
-export { OFFICIAL_ROLES, isOfficialRole, isAdministrator } from '$lib/types/user';
+export {
+	OFFICIAL_ROLES,
+	isOfficialRole,
+	isAdministrator,
+	isSuperAdmin,
+	isProtectedAccountRole
+} from '$lib/types/user';
 export type { SessionUser } from '$lib/types/user';
 
 const STORAGE_KEY = 'user';
+
+function readCachedUser(): SessionUser | null {
+	try {
+		const cached = localStorage.getItem(STORAGE_KEY);
+		if (!cached) return null;
+		const parsed = JSON.parse(cached) as SessionUser;
+		if (parsed?.id && parsed.isAuthenticated) return parsed;
+	} catch {
+		// ignore invalid cache
+	}
+	return null;
+}
 
 export async function hydrateSession(): Promise<SessionUser | null> {
 	try {
@@ -14,27 +32,34 @@ export async function hydrateSession(): Promise<SessionUser | null> {
 		} = await supabase.auth.getSession();
 
 		if (!session?.user) {
-			return null;
+			return readCachedUser();
 		}
 
-		const { data: profile } = await supabase
-			.from('users')
-			.select('id, full_name, role, email')
-			.eq('id', session.user.id)
-			.maybeSingle();
+		let profile: { id: string; full_name?: string; role?: string; email?: string } | null = null;
+		try {
+			const { data } = await supabase
+				.from('users')
+				.select('id, full_name, role, email')
+				.eq('id', session.user.id)
+				.maybeSingle();
+			profile = data;
+		} catch (profileError) {
+			console.warn('Profile fetch failed; using auth session defaults', profileError);
+		}
 
+		const resolvedRole = profile?.role?.trim() || 'Resident';
 		const user: SessionUser = {
 			id: session.user.id,
 			username: profile?.full_name ?? session.user.email?.split('@')[0] ?? 'User',
 			email: session.user.email ?? profile?.email ?? undefined,
-			role: profile?.role ?? 'Resident',
+			role: resolvedRole,
 			isAuthenticated: true
 		};
 
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 		return user;
 	} catch {
-		return null;
+		return readCachedUser();
 	}
 }
 
@@ -56,6 +81,15 @@ export async function requireAdministrator(): Promise<SessionUser> {
 	if (!isAdministrator(user.role)) {
 		await goto('/dashboard');
 		throw new Error('Administrator required');
+	}
+	return user;
+}
+
+export async function requireSuperAdmin(): Promise<SessionUser> {
+	const user = await requireOfficial();
+	if (!isSuperAdmin(user.role)) {
+		await goto('/dashboard');
+		throw new Error('Super admin required');
 	}
 	return user;
 }

@@ -2,7 +2,7 @@
   import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import ResidentSubmissionPanel from '$lib/components/ResidentSubmissionPanel.svelte';
   import PriorityBadge from '$lib/components/PriorityBadge.svelte';
-  import { FIRST_RESPONDER_UNITS, LABELS } from '$lib/constants/barangay';
+  import { FIRST_RESPONDER_UNITS, INCIDENT_TYPES, LABELS } from '$lib/constants/barangay';
   import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { goto } from '$app/navigation';
@@ -207,7 +207,7 @@
   let priorityFilter = 'All';
   let typeFilter = 'All';
   let searchTerm = '';
-  let showFilters = false;
+  let showFilters = true;
   let selectedReport: Report | null = null;
   let showReportModal = false;
   let showNewReportModal = false;
@@ -254,6 +254,8 @@
   let editExistingEvidence: EvidenceBuckets = { media: [], text: [] };
   let editResidentMetadata: ResidentMetadataResult | null = null;
   let originalNotes: string = '';
+
+  $: canSaveReport = Boolean(editForm.title?.trim() && editForm.type?.trim());
 
   // Resident submission form state
   let residentForm = {
@@ -659,18 +661,35 @@
     };
   });
 
+  $: reportTypeOptions = [
+    ...new Set([
+      ...INCIDENT_TYPES,
+      ...crimeReports.map((report) => report.type).filter(Boolean)
+    ])
+  ].sort();
+
   // Computed filtered reports
   $: filteredReports = crimeReports.filter(report => {
     const matchesStatus = statusFilter === 'All' || report.status === statusFilter;
     const matchesPriority = priorityFilter === 'All' || report.priority === priorityFilter;
     const matchesType = typeFilter === 'All' || report.type === typeFilter;
-    const matchesSearch = searchTerm === '' || 
-      report.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.officer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (report.shortId && report.shortId.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch =
+      query === '' ||
+      [
+        report.title,
+        report.type,
+        report.location,
+        report.officer,
+        report.description,
+        report.id,
+        report.shortId
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+
     return matchesStatus && matchesPriority && matchesType && matchesSearch;
   });
 
@@ -793,10 +812,8 @@
   async function saveReport() {
     if (isSaving) return;
 
-    const hasRespondents = editForm.suspects.some((s) => s.trim().length > 0);
-    const hasComplainants = editForm.victims.some((v) => v.trim().length > 0);
-    if (!hasRespondents || !hasComplainants) {
-      alert('Please add at least one Respondent and one Complainant before saving.');
+    if (!editForm.title?.trim() || !editForm.type?.trim()) {
+      alert('Please provide a report title and incident type before saving.');
       return;
     }
 
@@ -1184,7 +1201,7 @@
           </svg>
           <input
             type="text"
-            placeholder="Search cases, locations, officers, case IDs..."
+            placeholder="Search by title, incident type, location, description, officer, or case ID..."
             bind:value={searchTerm}
             class="w-full pl-12 pr-4 py-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300 text-lg"
           />
@@ -1217,15 +1234,10 @@
               <div>
                 <label for="filter-type" class="block text-sm font-medium text-gray-700 mb-2">Case Type</label>
                 <select id="filter-type" bind:value={typeFilter} class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
-                  <option value="All">All Types</option>
-                  <option value="Armed Robbery">Armed Robbery</option>
-                  <option value="Vehicle Theft">Vehicle Theft</option>
-                  <option value="Cyber Crime">Cyber Crime</option>
-                  <option value="Domestic Violence">Domestic Violence</option>
-                  <option value="Drug Trafficking">Drug Trafficking</option>
-                  <option value="Homicide">Homicide</option>
-                  <option value="Burglary">Burglary</option>
-                  <option value="Assault">Assault</option>
+                  <option value="All">All Incident Types</option>
+                  {#each reportTypeOptions as incidentType}
+                    <option value={incidentType}>{incidentType}</option>
+                  {/each}
                 </select>
               </div>
               <div class="flex items-end">
@@ -2067,7 +2079,7 @@
           <!-- Suspects -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label for="suspects-list" class="block text-sm font-medium text-gray-700">Respondents *</label>
+              <label for="suspects-list" class="block text-sm font-medium text-gray-700">Respondents</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
@@ -2102,7 +2114,7 @@
           <!-- Victims -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label for="victims-list" class="block text-sm font-medium text-gray-700">Complainants *</label>
+              <label for="victims-list" class="block text-sm font-medium text-gray-700">Complainants</label>
               <button 
                 type="button"
                 class="text-sm text-emerald-600 hover:text-emerald-700"
@@ -2233,7 +2245,7 @@
           <button 
             class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             on:click={saveReport}
-            disabled={isSaving || !editForm.title || !editForm.type || !editForm.suspects.some(s => s.trim()) || !editForm.victims.some(v => v.trim())}
+            disabled={isSaving || !canSaveReport}
           >
             {#if isSaving}
               <span class="flex items-center">

@@ -1,7 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { supabase, isServiceRole } from '$lib/server/supabase';
-import { isAuthResponse, requireAdministratorUser, requireOfficialUser } from '$lib/server/auth';
+import {
+	isAuthResponse,
+	isProtectedAccountRole,
+	requireOfficialUser,
+	requireSuperAdminUser
+} from '$lib/server/auth';
 
 type User = {
 	id: string;
@@ -25,10 +30,14 @@ function mapUser(user: Record<string, unknown>): User {
 	};
 }
 
-export const GET: RequestHandler = async ({ request }) => {
-	const official = await requireOfficialUser(request);
-	if (isAuthResponse(official)) {
-		return official;
+export const GET: RequestHandler = async ({ request, url }) => {
+	const scope = url.searchParams.get('scope');
+	const authUser =
+		scope === 'official'
+			? await requireOfficialUser(request)
+			: await requireSuperAdminUser(request);
+	if (isAuthResponse(authUser)) {
+		return authUser;
 	}
 
 	try {
@@ -53,14 +62,21 @@ export const GET: RequestHandler = async ({ request }) => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const admin = await requireAdministratorUser(request);
-	if (isAuthResponse(admin)) {
-		return admin;
+	const superAdmin = await requireSuperAdminUser(request);
+	if (isAuthResponse(superAdmin)) {
+		return superAdmin;
 	}
 
 	try {
 		const body = await request.json();
 		const { username, email, full_name, role, password } = body;
+
+		if (role === 'Barangay Captain' || role === 'Administrator') {
+			return json(
+				{ error: 'Administrator and Barangay Captain accounts cannot be created here.' },
+				{ status: 403 }
+			);
+		}
 
 		if (!username || !email) {
 			return json({ error: 'Username and email are required' }, { status: 400 });
@@ -134,9 +150,9 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 export const PUT: RequestHandler = async ({ request, url }) => {
-	const admin = await requireAdministratorUser(request);
-	if (isAuthResponse(admin)) {
-		return admin;
+	const superAdmin = await requireSuperAdminUser(request);
+	if (isAuthResponse(superAdmin)) {
+		return superAdmin;
 	}
 
 	try {
@@ -145,8 +161,28 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 			return json({ error: 'User ID is required' }, { status: 400 });
 		}
 
+		const { data: existingUser } = await supabase
+			.from('users')
+			.select('role')
+			.eq('id', id)
+			.maybeSingle();
+
 		const body = await request.json();
 		const { email, full_name, role, is_active } = body;
+
+		if (existingUser?.role && isProtectedAccountRole(existingUser.role)) {
+			return json(
+				{ error: 'Administrator and Barangay Captain accounts can only be managed outside this app.' },
+				{ status: 403 }
+			);
+		}
+
+		if (role === 'Barangay Captain' || role === 'Administrator') {
+			return json(
+				{ error: 'Only existing system accounts may hold Administrator or Barangay Captain roles.' },
+				{ status: 403 }
+			);
+		}
 
 		const updateData: Record<string, unknown> = {};
 		if (email !== undefined) updateData.email = email;
@@ -177,15 +213,29 @@ export const PUT: RequestHandler = async ({ request, url }) => {
 };
 
 export const DELETE: RequestHandler = async ({ url, request }) => {
-	const admin = await requireAdministratorUser(request);
-	if (isAuthResponse(admin)) {
-		return admin;
+	const superAdmin = await requireSuperAdminUser(request);
+	if (isAuthResponse(superAdmin)) {
+		return superAdmin;
 	}
 
 	try {
 		const id = url.searchParams.get('id');
 		if (!id) {
 			return json({ error: 'User ID is required' }, { status: 400 });
+		}
+
+		if (id === superAdmin.id) {
+			return json({ error: 'You cannot delete your own account.' }, { status: 403 });
+		}
+
+		const { data: targetUser } = await supabase
+			.from('users')
+			.select('role')
+			.eq('id', id)
+			.maybeSingle();
+
+		if (targetUser?.role && isProtectedAccountRole(targetUser.role)) {
+			return json({ error: 'Administrator and Barangay Captain accounts cannot be deleted.' }, { status: 403 });
 		}
 
 		const { error } = await supabase.from('users').delete().eq('id', id);

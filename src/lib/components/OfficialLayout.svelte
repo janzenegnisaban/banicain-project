@@ -6,12 +6,19 @@
   import PageTransition from '$lib/components/PageTransition.svelte';
   import LoadingIndicator from '$lib/components/LoadingIndicator.svelte';
   import { sidebarCollapsed } from '$lib/stores/sidebar';
-  import { requireOfficial, requireAdministrator, type SessionUser } from '$lib/utils/auth';
+  import {
+    requireOfficial,
+    requireAdministrator,
+    requireSuperAdmin as requireSuperAdminSession,
+    type SessionUser
+  } from '$lib/utils/auth';
 
   export let title = '';
   export let subtitle = '';
   export let variant: 'glass' | 'gradient' = 'glass';
   export let requireAdmin = false;
+  /** Barangay Captain only — used for user management */
+  export let superAdminOnly = false;
   export let sticky = true;
   export let showUser = true;
   /** When true, content sits flush under AppBar without extra horizontal padding wrapper */
@@ -22,11 +29,14 @@
 
   onMount(async () => {
     try {
-      currentUser = requireAdmin ? await requireAdministrator() : await requireOfficial();
+      currentUser = superAdminOnly
+        ? await requireSuperAdminSession()
+        : requireAdmin
+          ? await requireAdministrator()
+          : await requireOfficial();
       authReady = true;
     } catch {
-      // Redirect is triggered inside requireOfficial/requireAdministrator; avoid infinite loading state
-      await goto(requireAdmin ? '/dashboard' : '/login?role=officer');
+      await goto(superAdminOnly || requireAdmin ? '/dashboard' : '/login?role=officer');
     }
   });
 </script>

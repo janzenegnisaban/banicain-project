@@ -718,7 +718,7 @@
   </PageTransition>
 </div>
 
-<div class="max-w-5xl mx-auto px-4 pb-20 -mt-8">
+<div id="my-reports" class="max-w-5xl mx-auto px-4 pb-20 -mt-8 scroll-mt-24">
   <div class="relative rounded-[32px] bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-800 p-[1px] shadow-[0_20px_80px_rgba(15,23,42,0.45)]">
     <div class="relative rounded-[30px] bg-slate-950/70 backdrop-blur-2xl p-8 md:p-10 text-white overflow-hidden">
       <div class="pointer-events-none absolute inset-0">

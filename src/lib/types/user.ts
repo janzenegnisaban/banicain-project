@@ -24,6 +24,11 @@ export function isAdministrator(role: string): boolean {
 	return role === 'Administrator' || role === 'Barangay Captain';
 }
 
+/** Super Admin = Barangay Captain only (full user management). */
 export function isSuperAdmin(role: string): boolean {
-	return isAdministrator(role);
+	return role === 'Barangay Captain';
+}
+
+export function isProtectedAccountRole(role: string): boolean {
+	return role === 'Administrator' || role === 'Barangay Captain';
 }

@@ -13,6 +13,14 @@
   async function handleLogout() {
     await signOut('/');
   }
+
+  function goToMyReports() {
+    if (typeof window !== 'undefined' && window.location.pathname === '/residents') {
+      document.getElementById('my-reports')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    goto('/residents/dashboard');
+  }
 </script>
 
 <header class="mb-8 relative overflow-hidden rounded-2xl shadow-2xl bg-gradient-to-r from-emerald-600 via-primary-600 to-teal-600 p-6 lg:p-8">
@@ -55,7 +63,7 @@
         {#if currentUser && !isGuest}
           <button
             type="button"
-            on:click={() => goto('/residents/dashboard')}
+            on:click={goToMyReports}
             class="inline-flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-sm font-medium rounded-xl transition-all duration-200 hover:scale-[1.02]"
           >
             My Reports

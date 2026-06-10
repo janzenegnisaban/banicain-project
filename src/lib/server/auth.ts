@@ -1,8 +1,20 @@
 import { json } from '@sveltejs/kit';
 import { supabase } from '$lib/server/supabase';
-import { isAdministrator, isOfficialRole, type SessionUser } from '$lib/types/user';
+import {
+	isAdministrator,
+	isOfficialRole,
+	isProtectedAccountRole,
+	isSuperAdmin,
+	type SessionUser
+} from '$lib/types/user';
 
-export { OFFICIAL_ROLES, isOfficialRole, isAdministrator } from '$lib/types/user';
+export {
+	OFFICIAL_ROLES,
+	isOfficialRole,
+	isAdministrator,
+	isSuperAdmin,
+	isProtectedAccountRole
+} from '$lib/types/user';
 export type { SessionUser } from '$lib/types/user';
 
 export async function getSessionUser(request: Request): Promise<SessionUser | null> {
@@ -52,6 +64,14 @@ export async function requireAdministratorUser(request: Request): Promise<Sessio
 	const user = await getSessionUser(request);
 	if (!user || !isAdministrator(user.role)) {
 		return authError('Administrator access required', 403);
+	}
+	return user;
+}
+
+export async function requireSuperAdminUser(request: Request): Promise<SessionUser | Response> {
+	const user = await getSessionUser(request);
+	if (!user || !isSuperAdmin(user.role)) {
+		return authError('Barangay Captain access required', 403);
 	}
 	return user;
 }

@@ -2,7 +2,8 @@
   import OfficialLayout from '$lib/components/OfficialLayout.svelte';
   import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
-  import { authorizedFetch } from '$lib/utils/auth';
+  import { authorizedFetch, hydrateSession } from '$lib/utils/auth';
+  import { isProtectedAccountRole, isSuperAdmin, type SessionUser } from '$lib/types/user';
 
   type User = {
     id: string;
@@ -25,8 +26,12 @@
   let roleFilter = 'All';
   let statusFilter = 'All';
   let isSaving = false;
+  let sessionUser: SessionUser | null = null;
 
   const roles = ['Resident', 'Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator', 'Barangay Captain'];
+  const assignableRoles = roles.filter(
+    (role) => role !== 'Barangay Captain' && role !== 'Administrator'
+  );
   const statuses = ['All', 'Active', 'Inactive'];
 
   // Form state
@@ -39,7 +44,8 @@
     is_active: true
   };
 
-  onMount(() => {
+  onMount(async () => {
+    sessionUser = await hydrateSession();
     fetchUsers();
   });
 
@@ -103,8 +109,16 @@
     };
   }
 
-  async function saveUser() {
+  async function saveUser(actor: SessionUser | null | undefined) {
     if (isSaving) return;
+    if (!canManageUsers(actor)) {
+      alert('Only the Barangay Captain (Super Admin) can save user accounts.');
+      return;
+    }
+    if (editingUser && !canEditUser(editingUser)) {
+      alert('Administrator and Barangay Captain accounts cannot be edited here.');
+      return;
+    }
     if (!userForm.email || !userForm.username) {
       alert('Email and username are required');
       return;
@@ -160,13 +174,53 @@
     }
   }
 
-  function confirmDelete(user: User) {
+  function canManageUsers(actor: SessionUser | null | undefined): boolean {
+    return !!actor && isSuperAdmin(actor.role);
+  }
+
+  function canEditUser(user: User): boolean {
+    return !isProtectedAccountRole(user.role);
+  }
+
+  function canDeleteUser(user: User): boolean {
+    return !isProtectedAccountRole(user.role);
+  }
+
+  function openEditModalGuarded(user: User, actor: SessionUser | null | undefined) {
+    if (!canManageUsers(actor)) {
+      alert('Only the Barangay Captain (Super Admin) can edit user accounts.');
+      return;
+    }
+    if (!canEditUser(user)) {
+      alert('Administrator and Barangay Captain accounts cannot be edited here.');
+      return;
+    }
+    openEditModal(user);
+  }
+
+  function confirmDelete(user: User, actor: SessionUser | null | undefined) {
+    if (!canManageUsers(actor)) {
+      alert('Only the Barangay Captain (Super Admin) can delete user accounts.');
+      return;
+    }
+    if (!canDeleteUser(user)) {
+      alert('Administrator and Barangay Captain accounts cannot be deleted.');
+      return;
+    }
     deletingUser = user;
     showDeleteConfirm = true;
   }
 
   async function deleteUser() {
     if (!deletingUser) return;
+    if (!canManageUsers(sessionUser)) {
+      alert('Only the Barangay Captain (Super Admin) can delete user accounts.');
+      return;
+    }
+    if (!canDeleteUser(deletingUser)) {
+      alert('Administrator and Barangay Captain accounts cannot be deleted.');
+      return;
+    }
 
     try {
       const response = await authorizedFetch(`/api/users?id=${deletingUser.id}`, {
@@ -224,11 +278,13 @@
 
 <OfficialLayout
   title="User Management"
-  subtitle="Add, edit, or delete users and manage roles"
+  subtitle="Super Admin only — add, edit, or remove user accounts"
   variant="gradient"
-  requireAdmin={true}
+  superAdminOnly={true}
+  let:currentUser
 >
   <svelte:fragment slot="actions">
+    {#if canManageUsers(currentUser)}
     <button
       type="button"
       class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold rounded-xl transition-all shadow-sm"
@@ -239,6 +295,7 @@
       </svg>
       Add User
     </button>
+    {/if}
   </svelte:fragment>
 
     <!-- Statistics Cards -->
@@ -395,26 +452,36 @@
                     {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
                   </td>
                   <td class="py-4 px-4">
-                    <div class="flex items-center justify-end space-x-2">
-                      <button 
-                        class="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                        title="Edit User"
-                        on:click={() => openEditModal(user)}
-                      >
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                        </svg>
-                      </button>
-                      <button 
-                        class="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
-                        title="Delete User"
-                        on:click={() => confirmDelete(user)}
-                      >
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                      </button>
-                    </div>
+                    {#if canManageUsers(currentUser)}
+                      <div class="flex items-center justify-end space-x-2">
+                        {#if canEditUser(user)}
+                          <button 
+                            class="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                            title="Edit User"
+                            aria-label="Edit user"
+                            on:click={() => openEditModalGuarded(user, currentUser)}
+                          >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                          </button>
+                        {/if}
+                        {#if canDeleteUser(user)}
+                          <button 
+                            class="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Delete User"
+                            aria-label="Delete user"
+                            on:click={() => confirmDelete(user, currentUser)}
+                          >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                          </button>
+                        {/if}
+                      </div>
+                    {:else}
+                      <span class="text-xs text-gray-400">View only</span>
+                    {/if}
                   </td>
                 </tr>
               {/each}
@@ -479,9 +546,10 @@
               <label class="block text-sm font-medium text-gray-700 mb-2">Role *</label>
               <select 
                 bind:value={userForm.role}
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                disabled={editingUser ? isProtectedAccountRole(editingUser.role) : false}
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
               >
-                {#each roles as role}
+                {#each (editingUser && isProtectedAccountRole(editingUser.role) ? roles : assignableRoles) as role}
                   <option value={role}>{role}</option>
                 {/each}
               </select>
@@ -532,7 +600,7 @@
           </button>
           <button 
             class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            on:click={saveUser}
+            on:click={() => saveUser(sessionUser)}
             disabled={isSaving || !userForm.email || !userForm.username}
           >
             {#if isSaving}
