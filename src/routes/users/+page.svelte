@@ -27,6 +27,7 @@
   let statusFilter = 'All';
   let isSaving = false;
   let sessionUser: SessionUser | null = null;
+  let fetchError = '';
 
   const roles = ['Resident', 'Police Officer', 'Crime Analyst', 'Police Chief', 'Administrator', 'Barangay Captain'];
   const assignableRoles = roles.filter(
@@ -44,24 +45,32 @@
     is_active: true
   };
 
+  let hasFetchedUsers = false;
+
   onMount(async () => {
     sessionUser = await hydrateSession();
-    fetchUsers();
   });
+
+  $: if (sessionUser && isSuperAdmin(sessionUser.role) && !hasFetchedUsers) {
+    hasFetchedUsers = true;
+    fetchUsers();
+  }
 
   async function fetchUsers() {
     isLoading = true;
+    fetchError = '';
     try {
       const res = await authorizedFetch('/api/users');
       const data = await res.json();
-      if (data.error) {
-        console.error('Error fetching users:', data.error);
+      if (!res.ok) {
+        fetchError = data?.error ?? `Unable to load users (${res.status}).`;
         users = [];
-      } else {
-        users = data;
+        return;
       }
+      users = Array.isArray(data) ? data : [];
     } catch (error) {
       console.error('Failed to fetch users:', error);
+      fetchError = 'Unable to load users. Check your connection and try again.';
       users = [];
     } finally {
       isLoading = false;
@@ -389,6 +398,19 @@
         </div>
       </div>
 
+      {#if fetchError}
+        <div class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {fetchError}
+          <button
+            type="button"
+            class="ml-3 font-semibold underline hover:no-underline"
+            on:click={fetchUsers}
+          >
+            Retry
+          </button>
+        </div>
+      {/if}
+
       <!-- Users Table -->
       {#if isLoading}
         <div class="text-center py-12">
@@ -400,7 +422,9 @@
         </div>
       {:else if filteredUsers.length === 0}
         <div class="text-center py-12">
-          <p class="text-gray-600">No users found</p>
+          <p class="text-gray-600">
+            {fetchError ? 'No users loaded.' : users.length === 0 ? 'No users in the system yet.' : 'No users match your search or filters.'}
+          </p>
         </div>
       {:else}
         <div class="overflow-x-auto">

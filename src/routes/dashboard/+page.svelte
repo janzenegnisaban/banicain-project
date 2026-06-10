@@ -23,6 +23,7 @@
   let eventSource: EventSource | null = null;
   let activeTab = 'overview';
   let reportSearchTerm = '';
+  let pendingSearchTerm = '';
   let reportStatusFilter = 'All';
   let reportPriorityFilter = 'All';
   let reportTypeFilter = 'All';
@@ -734,6 +735,29 @@
     resident: parseResidentMetadata(report.notes ?? ''),
     evidence: parseEvidenceEntries(report.evidence ?? [])
   }));
+
+  $: filteredPendingReportViewModels = reportViewModels.filter(({ base: report, resident }) => {
+    if (report.status !== 'Pending Confirmation') return false;
+    const query = pendingSearchTerm.trim().toLowerCase();
+    if (query === '') return true;
+    const haystack = [
+      report.title,
+      report.type,
+      report.location,
+      report.description,
+      report.priority,
+      report.id,
+      report.shortId,
+      resident.reporter?.name,
+      resident.reporter?.contact,
+      resident.reporter?.address,
+      resident.message
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(query);
+  });
 </script>
 
 <OfficialLayout
@@ -999,9 +1023,33 @@
                   {pendingConfirmationReports} {pendingConfirmationReports === 1 ? 'Report' : 'Reports'}
                 </span>
               </div>
+
+              <div class="mb-4">
+                <div class="relative">
+                  <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                  </svg>
+                  <input
+                    type="text"
+                    bind:value={pendingSearchTerm}
+                    placeholder="Search pending reports by title, type, location, or reporter..."
+                    class="w-full pl-12 pr-4 py-3 bg-white border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                {#if pendingSearchTerm.trim()}
+                  <p class="mt-2 text-sm text-gray-600">
+                    Showing {filteredPendingReportViewModels.length} of {pendingConfirmationReports} pending {pendingConfirmationReports === 1 ? 'report' : 'reports'}
+                  </p>
+                {/if}
+              </div>
               
               <div class="space-y-4">
-                {#each reportViewModels.filter(({ base: report }) => report.status === 'Pending Confirmation') as { base: report, resident, evidence } (report.id)}
+                {#if filteredPendingReportViewModels.length === 0}
+                  <p class="text-center py-8 text-gray-600 bg-white rounded-xl border border-amber-100">
+                    No pending reports match your search.
+                  </p>
+                {:else}
+                {#each filteredPendingReportViewModels as { base: report, resident, evidence } (report.id)}
                   <div class="bg-white rounded-xl p-5 border border-amber-200 hover:border-amber-300 transition-all duration-300 hover:shadow-md">
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
@@ -1094,23 +1142,18 @@
                     </div>
                   </div>
                 {/each}
+                {/if}
               </div>
             </div>
           {/if}
           
           <!-- Recent Activity with Modern Card -->
           <div class="bg-white/90 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-lg border border-emerald-100/50">
-            <div class="flex items-center justify-between mb-6">
+            <div class="mb-6">
               <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <div class="w-1 h-6 bg-gradient-to-b from-emerald-500 to-teal-500 rounded-full"></div>
                 Recent Activity
               </h3>
-              <button class="text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1">
-                View All
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                </svg>
-              </button>
             </div>
             {#if isLoading}
               <div class="text-center py-8">

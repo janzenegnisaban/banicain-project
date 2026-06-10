@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { supabase, isServiceRole } from '$lib/server/supabase';
+import { supabase, getSupabaseClientForRequest, isServiceRole } from '$lib/server/supabase';
 import {
 	isAuthResponse,
 	isProtectedAccountRole,
@@ -41,7 +41,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	try {
-		const { data, error } = await supabase
+		const authHeader = request.headers.get('authorization') ?? undefined;
+		const dbClient = getSupabaseClientForRequest(authHeader);
+		const { data, error } = await dbClient
 			.from('users')
 			.select('id, email, full_name, role, is_active, created_at')
 			.order('created_at', { ascending: false });

@@ -39,11 +39,15 @@ export async function getSessionUser(request: Request): Promise<SessionUser | nu
 		.eq('id', user.id)
 		.maybeSingle();
 
+	const metadataRole =
+		typeof user.user_metadata?.role === 'string' ? user.user_metadata.role.trim() : '';
+	const resolvedRole = profile?.role?.trim() || metadataRole || 'Resident';
+
 	return {
 		id: user.id,
 		username: profile?.full_name ?? user.email?.split('@')[0] ?? 'User',
 		email: user.email ?? profile?.email ?? undefined,
-		role: profile?.role ?? 'Resident',
+		role: resolvedRole,
 		isAuthenticated: true
 	};
 }
