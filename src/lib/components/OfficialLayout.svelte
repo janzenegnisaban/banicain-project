@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import AppBar from '$lib/components/AppBar.svelte';
   import PageTransition from '$lib/components/PageTransition.svelte';
@@ -24,7 +25,8 @@
       currentUser = requireAdmin ? await requireAdministrator() : await requireOfficial();
       authReady = true;
     } catch {
-      // requireOfficial/requireAdministrator handles redirect
+      // Redirect is triggered inside requireOfficial/requireAdministrator; avoid infinite loading state
+      await goto(requireAdmin ? '/dashboard' : '/login?role=officer');
     }
   });
 </script>

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import PageTransition from '$lib/components/PageTransition.svelte';
   import ResidentAppBar from '$lib/components/ResidentAppBar.svelte';
-  import IncidentWorkflowSteps from '$lib/components/IncidentWorkflowSteps.svelte';
   import PriorityBadge from '$lib/components/PriorityBadge.svelte';
+  import ResidentCaseTracker from '$lib/components/ResidentCaseTracker.svelte';
   import type { Report } from '$lib/types/report';
   import type { SessionUser } from '$lib/types/user';
   import { authorizedFetch as authFetch, hydrateSession } from '$lib/utils/auth';
@@ -15,15 +15,17 @@
   let myReportsLoading = false;
   let myReportsError = '';
   let searchTerm = '';
-  let expandedReports = new Set<string>();
+  let reportsPollId: number | null = null;
 
   function isAuthenticatedResident(): boolean {
     return currentUser?.role === 'Resident' && !!currentUser?.id;
   }
 
-  async function fetchMyReports(userId: string) {
-    myReportsLoading = true;
-    myReportsError = '';
+  async function fetchMyReports(userId: string, silent = false) {
+    if (!silent) {
+      myReportsLoading = true;
+      myReportsError = '';
+    }
     try {
       const response = await authFetch(`/api/reports?reporterId=${encodeURIComponent(userId)}`);
       if (!response.ok) throw new Error('Failed to load reports');
@@ -31,10 +33,15 @@
       myReports = Array.isArray(data.reports) ? data.reports : [];
     } catch (error) {
       console.error('Failed to fetch resident reports:', error);
-      myReportsError = 'Unable to load your reports right now.';
+      if (!silent) myReportsError = 'Unable to load your reports right now.';
     } finally {
-      myReportsLoading = false;
+      if (!silent) myReportsLoading = false;
     }
+  }
+
+  function startReportsPolling(userId: string) {
+    if (reportsPollId) clearInterval(reportsPollId);
+    reportsPollId = window.setInterval(() => fetchMyReports(userId, true), 30000);
   }
 
   function formatReportId(id: string | null | undefined): string {
@@ -65,19 +72,6 @@
     }
   }
 
-  function getLatestUpdate(report: Report) {
-    const updates = Array.isArray(report.updates) ? report.updates : [];
-    if (updates.length === 0) return null;
-    return updates[updates.length - 1];
-  }
-
-  function toggleTimeline(reportId: string) {
-    const next = new Set(expandedReports);
-    if (next.has(reportId)) next.delete(reportId);
-    else next.add(reportId);
-    expandedReports = next;
-  }
-
   $: totalReports = myReports.length;
   $: pendingReports = myReports.filter((r) => r.status === 'Pending Confirmation').length;
   $: openReports = myReports.filter((r) => r.status === 'Open').length;
@@ -99,7 +93,12 @@
     isAuthChecked = true;
     if (currentUser?.role === 'Resident' && currentUser.id) {
       fetchMyReports(currentUser.id);
+      startReportsPolling(currentUser.id);
     }
+  });
+
+  onDestroy(() => {
+    if (reportsPollId) clearInterval(reportsPollId);
   });
 </script>
 
@@ -120,6 +119,13 @@
             class="inline-flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-sm font-medium rounded-xl transition-all"
           >
             New Report
+          </button>
+          <button
+            type="button"
+            on:click={() => currentUser?.id && fetchMyReports(currentUser.id)}
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl transition-all"
+          >
+            Refresh
           </button>
         </svelte:fragment>
       </ResidentAppBar>
@@ -212,7 +218,6 @@
         {:else}
           <div class="space-y-4">
             {#each filteredReports as report (report.id)}
-              {@const latestUpdate = getLatestUpdate(report)}
               <article class="rounded-2xl border border-white/40 bg-white/90 p-6 shadow-sm hover:shadow-md transition-shadow">
                 <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div class="min-w-0 flex-1">
@@ -232,42 +237,9 @@
 
                 <p class="text-sm text-slate-700 mt-4 line-clamp-2">{report.description}</p>
 
-                <div class="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-                  <IncidentWorkflowSteps status={report.status} compact />
+                <div class="mt-4">
+                  <ResidentCaseTracker {report} variant="dashboard" defaultExpanded={false} />
                 </div>
-
-                <p class="mt-3 text-sm text-slate-600">
-                  <span class="font-medium text-slate-800">Latest update:</span>
-                  {latestUpdate?.note ?? 'No updates yet.'}
-                </p>
-
-                <button
-                  type="button"
-                  class="mt-3 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-                  on:click={() => toggleTimeline(report.id)}
-                >
-                  {expandedReports.has(report.id) ? 'Hide timeline' : 'View timeline'}
-                </button>
-
-                {#if expandedReports.has(report.id)}
-                  <div class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    {#if Array.isArray(report.updates) && report.updates.length > 0}
-                      <div class="space-y-3 text-sm text-slate-700">
-                        {#each report.updates as update, idx (idx)}
-                          <div class="flex items-start gap-3">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
-                            <div>
-                              <p class="font-medium text-slate-900">{update.note || 'Update added'}</p>
-                              <p class="text-xs text-slate-500">{formatDate(update.date)}</p>
-                            </div>
-                          </div>
-                        {/each}
-                      </div>
-                    {:else}
-                      <p class="text-sm text-slate-500">No updates yet.</p>
-                    {/if}
-                  </div>
-                {/if}
               </article>
             {/each}
           </div>

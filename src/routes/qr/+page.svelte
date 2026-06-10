@@ -21,7 +21,7 @@
   <PageTransition duration={300}>
     <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
       <div class="bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-6 text-center text-white">
-        <img src="/b-safe-logo.svg" alt="B-SAFE" class="w-16 h-16 mx-auto mb-3" />
+        <img src="/barangay-logo.png" alt="Brgy. Banicain — B-SAFE" class="w-16 h-16 mx-auto mb-3 object-contain" />
         <h1 class="text-2xl font-bold">Scan to Report</h1>
         <p class="text-emerald-100 text-sm mt-1">{BARANGAY_NAME}</p>
       </div>

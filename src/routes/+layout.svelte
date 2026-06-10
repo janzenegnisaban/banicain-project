@@ -9,7 +9,7 @@
 
 <svelte:head>
 	<title>B-SAFE</title>
-	<link rel="icon" href="/b-safe-logo.svg" />
+	<link rel="icon" href="/barangay-logo.png" type="image/png" />
 </svelte:head>
 
 <!-- Show loading indicator when navigating between pages -->

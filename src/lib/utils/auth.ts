@@ -1,6 +1,6 @@
 import { goto } from '$app/navigation';
 import { supabase } from '$lib/supabaseClient';
-import { isOfficialRole, type SessionUser } from '$lib/types/user';
+import { isAdministrator, isOfficialRole, type SessionUser } from '$lib/types/user';
 
 export { OFFICIAL_ROLES, isOfficialRole, isAdministrator } from '$lib/types/user';
 export type { SessionUser } from '$lib/types/user';
@@ -53,8 +53,8 @@ export async function requireOfficial(): Promise<SessionUser> {
 
 export async function requireAdministrator(): Promise<SessionUser> {
 	const user = await requireOfficial();
-	if (user.role !== 'Administrator') {
-		goto('/dashboard');
+	if (!isAdministrator(user.role)) {
+		await goto('/dashboard');
 		throw new Error('Administrator required');
 	}
 	return user;

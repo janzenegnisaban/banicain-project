@@ -75,7 +75,7 @@
           class="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer flex-shrink-0"
           aria-label="Go to home page"
         >
-          <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-10 h-10" />
+          <img src="/barangay-logo.png" alt="Brgy. Banicain — B-SAFE" class="w-10 h-10 object-contain" />
           <div class="text-left">
             <h2 class="text-xl font-bold text-emerald-700 leading-tight">B-SAFE</h2>
             <p class="text-[10px] uppercase tracking-wider text-emerald-500/80">Official Portal</p>
@@ -83,7 +83,7 @@
         </button>
       {:else}
         <button on:click={goHome} class="hover:opacity-80 transition-opacity cursor-pointer" aria-label="Go to home page">
-          <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-10 h-10" />
+          <img src="/barangay-logo.png" alt="Brgy. Banicain — B-SAFE" class="w-10 h-10 object-contain" />
         </button>
       {/if}
 

@@ -136,10 +136,20 @@ function handleGuestReport() {
     <div class="container mx-auto px-4 relative z-10 text-center">
       {#if visible}
         <div in:fly={{ y: -50, duration: 1000 }}>
-          <!-- Logo -->
-          <div class="mb-8">
-            <a href="/" class="inline-block">
-              <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-32 h-32 mx-auto filter drop-shadow-2xl hover:scale-110 transition-transform duration-300 cursor-pointer" />
+          <!-- Barangay official seal — clipped to circle so nothing spills outside -->
+          <div class="mb-8 flex justify-center">
+            <a
+              href="/"
+              class="block size-36 sm:size-44 md:size-52 shrink-0 overflow-hidden rounded-full bg-white shadow-2xl ring-4 ring-white/40 hover:scale-105 transition-transform duration-300"
+              aria-label="Brgy. Banicain home"
+            >
+              <img
+                src="/barangay-banicain-logo.jpg"
+                alt="Official seal of Barangay New Banicain, Olongapo City"
+                class="size-full object-cover object-center"
+                width="208"
+                height="208"
+              />
             </a>
           </div>
 

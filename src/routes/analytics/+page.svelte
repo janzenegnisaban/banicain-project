@@ -4,8 +4,12 @@
   import { fade, fly, scale } from 'svelte/transition';
   import { authorizedFetch } from '$lib/utils/auth';
   import type { Report } from '$lib/types/report';
-  import { jsPDF } from 'jspdf';
   import { LABELS } from '$lib/constants/barangay';
+  import {
+    exportAnalyticalReportPdf,
+    exportAnalyticsDataPdf,
+    exportPredictionReportPdf
+  } from '$lib/utils/pdfAnalyticsExport';
   
   // Reports data
   let reports: Report[] = [];
@@ -235,137 +239,7 @@
     isGeneratingReport = true;
 
     try {
-      // Create PDF document
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let yPosition = 20;
-      const margin = 20;
-      const lineHeight = 7;
-
-      // Helper function to add new page if needed
-      const checkNewPage = (requiredSpace: number) => {
-        if (yPosition + requiredSpace > pageHeight - margin) {
-          pdf.addPage();
-          yPosition = margin;
-        }
-      };
-
-      // Title
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('CRIME ANALYTICS REPORT', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
-
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Summary Statistics
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('SUMMARY STATISTICS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Total Cases: ${analyticsData.totalCases.toLocaleString()}`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Incident Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
-      yPosition += 10;
-
-      // Top Crime Types
-      checkNewPage(20);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('TOP CRIME TYPES', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.topCrimeTypes.length > 0) {
-        analyticsData.topCrimeTypes.forEach(crime => {
-          checkNewPage(lineHeight);
-          pdf.text(`${crime.type}: ${crime.count} cases (${crime.percentage.toFixed(1)}%)`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // High Risk Areas
-      checkNewPage(20);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('HIGH RISK AREAS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.hotSpots.length > 0 && analyticsData.hotSpots[0] !== 'No data available') {
-        analyticsData.hotSpots.forEach((spot, i) => {
-          checkNewPage(lineHeight);
-          pdf.text(`${i + 1}. ${spot}`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // Monthly Trends
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('MONTHLY TRENDS (Last 6 Months)', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.monthlyTrends.length > 0) {
-        analyticsData.monthlyTrends.forEach(trend => {
-          checkNewPage(lineHeight);
-          pdf.text(`${trend.month}: ${trend.cases} cases, ${trend.solved} solved`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // AI Insights
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('AI INSIGHTS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (aiInsights.length > 0) {
-        aiInsights.forEach(insight => {
-          checkNewPage(lineHeight * 2);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(`[${insight.type.toUpperCase()}] ${insight.title}`, margin + 5, yPosition);
-          yPosition += lineHeight;
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(insight.description, margin + 5, yPosition);
-          yPosition += lineHeight + 2;
-        });
-      } else {
-        pdf.text('No insights available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-
-      // Save PDF
-      pdf.save(`analytics-report-${new Date().toISOString().split('T')[0]}.pdf`);
+      exportAnalyticalReportPdf(analyticsData, aiInsights);
     } catch (error) {
       console.error('Failed to generate report:', error);
       alert('Failed to generate PDF report. Please try again.');
@@ -413,118 +287,7 @@
         accuracy: Math.round(accuracy * 10) / 10
       };
 
-      // Generate PDF with predictions
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let yPosition = 20;
-      const margin = 20;
-      const lineHeight = 7;
-
-      const checkNewPage = (requiredSpace: number) => {
-        if (yPosition + requiredSpace > pageHeight - margin) {
-          pdf.addPage();
-          yPosition = margin;
-        }
-      };
-
-      // Title
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('AI PREDICTIVE ANALYTICS REPORT', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
-
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Model Accuracy
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('MODEL ACCURACY', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Prediction Model Accuracy: ${accuracy.toFixed(1)}%`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Based on ${reports.length} historical reports`, margin, yPosition);
-      yPosition += 10;
-
-      // High Risk Areas Prediction
-      checkNewPage(25);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('PREDICTED HIGH RISK AREAS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (highRiskAreas.length > 0 && highRiskAreas[0] !== 'Analyzing patterns...') {
-        highRiskAreas.forEach((area, i) => {
-          checkNewPage(lineHeight);
-          pdf.text(`${i + 1}. ${area} - Increased patrol recommended`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('Insufficient data for area predictions', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // Next Month Predictions
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('NEXT MONTH PREDICTIONS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Predicted Total Cases: ${predictedCases}`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Trend Direction: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Current Month Cases: ${lastMonthCases}`, margin, yPosition);
-      yPosition += 10;
-
-      // Predicted Crime Types
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('PREDICTED TOP CRIME TYPES (Next Month)', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (predictedCrimeTypes.length > 0) {
-        predictedCrimeTypes.slice(0, 5).forEach(crime => {
-          checkNewPage(lineHeight);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(`${crime.type}: ${crime.predictedCount} predicted cases`, margin + 5, yPosition);
-          yPosition += lineHeight;
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(`Risk Level: ${crime.riskLevel}`, margin + 10, yPosition);
-          yPosition += lineHeight + 2;
-        });
-      } else {
-        pdf.text('No predictions available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // Recommendations
-      checkNewPage(40);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('RECOMMENDATIONS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      
-      const recommendations = [];
+      const recommendations: string[] = [];
       if (analyticsData.crimeTrend === 'increasing') {
         recommendations.push('Increase patrol frequency in high-risk areas');
         recommendations.push('Allocate additional resources for incident prevention');
@@ -537,14 +300,16 @@
       }
       recommendations.push('Review and update response protocols based on predicted trends');
 
-      recommendations.forEach(rec => {
-        checkNewPage(lineHeight);
-        pdf.text(`• ${rec}`, margin + 5, yPosition);
-        yPosition += lineHeight;
+      exportPredictionReportPdf({
+        analytics: analyticsData,
+        reportsCount: reports.length,
+        accuracy,
+        highRiskAreas,
+        predictedCases,
+        lastMonthCases,
+        predictedTypes: predictedCrimeTypes,
+        recommendations
       });
-
-      // Save PDF
-      pdf.save(`predictions-report-${new Date().toISOString().split('T')[0]}.pdf`);
 
       // Update UI
       predictionResults = {
@@ -564,169 +329,7 @@
     isExportingData = true;
 
     try {
-      // Create PDF document with comprehensive data export
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let yPosition = 20;
-      const margin = 20;
-      const lineHeight = 7;
-
-      const checkNewPage = (requiredSpace: number) => {
-        if (yPosition + requiredSpace > pageHeight - margin) {
-          pdf.addPage();
-          yPosition = margin;
-        }
-      };
-
-      // Title
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('ANALYTICS DATA EXPORT', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
-
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Exported: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Summary Statistics
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('SUMMARY STATISTICS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Total Reports: ${reports.length}`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Total Cases Analyzed: ${analyticsData.totalCases}`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Solved Rate: ${analyticsData.solvedRate}%`, margin, yPosition);
-      yPosition += lineHeight;
-      pdf.text(`Incident Trend: ${analyticsData.crimeTrend.charAt(0).toUpperCase() + analyticsData.crimeTrend.slice(1)}`, margin, yPosition);
-      yPosition += 10;
-
-      // Top Crime Types
-      checkNewPage(25);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('TOP CRIME TYPES', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.topCrimeTypes.length > 0) {
-        analyticsData.topCrimeTypes.forEach(crime => {
-          checkNewPage(lineHeight);
-          pdf.text(`${crime.type}: ${crime.count} cases (${crime.percentage.toFixed(1)}%)`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // High Risk Areas
-      checkNewPage(20);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('HIGH RISK AREAS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.hotSpots.length > 0 && analyticsData.hotSpots[0] !== 'No data available') {
-        analyticsData.hotSpots.forEach((spot, i) => {
-          checkNewPage(lineHeight);
-          pdf.text(`${i + 1}. ${spot}`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // Monthly Trends
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('MONTHLY TRENDS (Last 6 Months)', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (analyticsData.monthlyTrends.length > 0) {
-        analyticsData.monthlyTrends.forEach(trend => {
-          checkNewPage(lineHeight);
-          pdf.text(`${trend.month}: ${trend.cases} cases, ${trend.solved} solved (${trend.cases > 0 ? ((trend.solved / trend.cases) * 100).toFixed(1) : 0}% solved)`, margin + 5, yPosition);
-          yPosition += lineHeight;
-        });
-      } else {
-        pdf.text('No data available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 5;
-
-      // AI Insights
-      checkNewPage(30);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('AI INSIGHTS', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      if (aiInsights.length > 0) {
-        aiInsights.forEach(insight => {
-          checkNewPage(lineHeight * 2);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(`[${insight.type.toUpperCase()}] ${insight.title}`, margin + 5, yPosition);
-          yPosition += lineHeight;
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(insight.description, margin + 5, yPosition);
-          yPosition += lineHeight + 2;
-        });
-      } else {
-        pdf.text('No insights available', margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-      yPosition += 10;
-
-      // Report Summary (first 20 reports)
-      checkNewPage(40);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('RECENT REPORTS SUMMARY', margin, yPosition);
-      yPosition += lineHeight;
-
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      const reportsToShow = reports.slice(0, 20);
-      reportsToShow.forEach((report, index) => {
-        checkNewPage(lineHeight * 3);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(`${index + 1}. ${report.title}`, margin + 5, yPosition);
-        yPosition += lineHeight;
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(`   Type: ${report.type} | Status: ${report.status} | Priority: ${report.priority}`, margin + 5, yPosition);
-        yPosition += lineHeight;
-        pdf.text(`   Location: ${report.location} | Date: ${report.date}`, margin + 5, yPosition);
-        yPosition += lineHeight + 1;
-      });
-
-      if (reports.length > 20) {
-        checkNewPage(lineHeight);
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'italic');
-        pdf.text(`... and ${reports.length - 20} more reports`, margin + 5, yPosition);
-        yPosition += lineHeight;
-      }
-
-      // Save PDF
-      pdf.save(`analytics-export-${new Date().toISOString().split('T')[0]}.pdf`);
+      exportAnalyticsDataPdf(analyticsData, aiInsights, reports);
     } catch (error) {
       console.error('Failed to export data:', error);
       alert('Failed to export data. Please try again.');

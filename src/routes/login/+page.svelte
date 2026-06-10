@@ -118,7 +118,7 @@
       <div class="text-center">
         <div class="relative inline-block">
           <a href="/" class="inline-block">
-            <img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-32 h-32 mx-auto filter drop-shadow-md hover:drop-shadow-xl transition-all duration-300 cursor-pointer" />
+            <img src="/barangay-logo.png" alt="Brgy. Banicain — B-SAFE" class="w-32 h-32 mx-auto object-contain filter drop-shadow-md hover:drop-shadow-xl transition-all duration-300 cursor-pointer" />
           </a>
           <div class="absolute inset-0 w-32 h-32 mx-auto bg-primary-400 rounded-full opacity-20 animate-pulse-glow pointer-events-none"></div>
         </div>

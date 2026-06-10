@@ -114,7 +114,7 @@
 				<div class="md:w-1/2 space-y-6">
 					<div class="text-center md:text-left">
 						<a href="/" class="inline-flex items-center justify-center">
-							<img src="/b-safe-logo.svg" alt="B-SAFE Logo" class="w-16 h-16 md:w-20 md:h-20 hover:scale-105 transition-transform" />
+							<img src="/barangay-logo.png" alt="Brgy. Banicain — B-SAFE" class="w-16 h-16 md:w-20 md:h-20 object-contain hover:scale-105 transition-transform" />
 						</a>
 						<h1 class="mt-4 text-3xl font-bold text-gray-900">Register as Resident</h1>
 						<p class="text-gray-600">Create a resident account to submit and track reports</p>

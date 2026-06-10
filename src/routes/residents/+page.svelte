@@ -22,6 +22,7 @@
   import FormSection from '$lib/components/FormSection.svelte';
   import PriorityBadge from '$lib/components/PriorityBadge.svelte';
   import IncidentWorkflowSteps from '$lib/components/IncidentWorkflowSteps.svelte';
+  import ResidentCaseTracker from '$lib/components/ResidentCaseTracker.svelte';
 
   let name = '';
   let address = '';
@@ -143,12 +144,6 @@
       default:
         return 'bg-emerald-500/20 border border-emerald-300/40 text-emerald-100';
     }
-  }
-
-  function getRecentUpdates(report: Report, limit = 3) {
-    if (!report?.updates) return [];
-    const history = Array.isArray(report.updates) ? [...report.updates] : [];
-    return history.slice(-limit).reverse();
   }
 
   function readFileAsDataUrl(file: File) {
@@ -831,54 +826,22 @@
 
                   <p class="text-sm text-slate-100 leading-relaxed">{report.description}</p>
 
-                  <div class="grid gap-6 lg:grid-cols-[1fr,250px]">
-                    <div class="space-y-4">
-                      <div class="grid gap-4 sm:grid-cols-3 text-sm text-slate-200">
-                        <div>
-                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Location</p>
-                          <p class="text-white mt-1">{report.location}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Officer</p>
-                          <p class="text-white mt-1">{report.officer || 'Unassigned'}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Update</p>
-                          <p class="text-white mt-1">{latestUpdateNote(report)}</p>
-                        </div>
-                      </div>
-
-                      <div class="flex flex-wrap gap-4 text-xs text-slate-400">
-                        <div class="flex items-center gap-2">
-                          <span class="inline-flex h-2 w-2 rounded-full bg-emerald-300"></span>
-                          <span>Priority channel monitored</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                          <span class="inline-flex h-2 w-2 rounded-full bg-sky-300"></span>
-                          <span>Supabase synced</span>
-                        </div>
-                      </div>
+                  <div class="grid gap-4 sm:grid-cols-3 text-sm text-slate-200">
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Location</p>
+                      <p class="text-white mt-1">{report.location}</p>
                     </div>
-
-                    <div class="rounded-2xl bg-black/30 border border-white/10 p-4">
-                      <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Recent Updates</p>
-                      {#if getRecentUpdates(report).length === 0}
-                        <p class="text-sm text-slate-300 mt-3">No timeline entries yet.</p>
-                      {:else}
-                        <div class="mt-4 space-y-4">
-                          {#each getRecentUpdates(report) as update}
-                            <div class="flex items-start gap-3 text-sm">
-                              <div class="mt-1 h-2.5 w-2.5 rounded-full bg-primary-300"></div>
-                              <div>
-                                <p class="text-white">{update.note}</p>
-                                <p class="text-xs text-slate-400">{update.date} · {update.time}</p>
-                              </div>
-                            </div>
-                          {/each}
-                        </div>
-                      {/if}
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Officer</p>
+                      <p class="text-white mt-1">{report.officer || 'Unassigned'}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Update</p>
+                      <p class="text-white mt-1">{latestUpdateNote(report)}</p>
                     </div>
                   </div>
+
+                  <ResidentCaseTracker {report} variant="panel" />
                 </div>
               </div>
             {/each}
